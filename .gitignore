@@ -1,0 +1,53 @@
+# =======================================================================
+# ESP-IDF (ESP32) Standard gitignore
+# =======================================================================
+
+# 1. Build Directories (빌드 임시 파일 및 바이너리 배출구)
+build/
+latex/
+html/
+
+# 2. ESP-IDF Managed Components (자동으로 다운로드되는 컴포넌트 라이브러리)
+managed_components/
+dependencies.lock
+
+# 3. Project Configuration Files (보안 및 로컬 하드웨어 설정)
+sdkconfig.old
+sdkconfig.defaults.old
+
+# 4. VS Code & IDE Settings (로컬 에디터 설정)
+.vscode/
+.idea/
+.clion/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# 5. Dev Container (도커 개발 환경 관련 로컬 캐시)
+.devcontainer/local-data/
+
+# 6. Python virtual environment (ESP-IDF 툴체인이 사용하는 파이썬 가상환경)
+.espressif/
+.venv/
+venv/
+ENV/
+
+# 7. Secrets & Certificates (🚨 중요: 보안 인증서 및 키 파일 방어)
+# AWS IoT용 Claim 인증서, Private Key, Unique 인증서 등이 실수로 깃허브에 퍼지는 것을 막습니다.
+*.pem
+*.crt
+*.key
+*.der
+main/certs/
+main/private/
+
+# 8. OS Generated Files (운영체제 쓰레기 파일)
+.DS_Store
+.DS_Store?
+._*
+Thumbe.db
+
+# 9. Compiled Object Files (컴파일된 목적 파일)
+*.obj
