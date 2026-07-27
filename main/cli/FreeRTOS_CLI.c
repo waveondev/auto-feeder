@@ -45,6 +45,8 @@
 #include "config_cli.h"
 #include "set_cli.h"
 #include "debug_cli.h"
+#include "mqtt_cli.h"
+#include "gpio_util.h"
 const char jbx_pwd_1[16] = "#80860612";
 
 typedef struct xCOMMAND_INPUT_LIST
@@ -74,7 +76,7 @@ static BaseType_t prvHelpCommand( char *pcWriteBuffer, size_t xWriteBufferLen, c
 static BaseType_t prvRunTimeStatsCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString );
 static int8_t prvGetNumberOfParameters( const char *pcCommandString );
 BaseType_t prvResetCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString );
-
+static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString );
 static const CLI_Command_Definition_t xTaskStats;
 static const CLI_Command_Definition_t xHelpCommand;
 static const CLI_Command_Definition_t xLoginCommand;
@@ -92,6 +94,14 @@ static const CLI_Command_Definition_t xStartStopTrace;
 static const CLI_Command_Definition_t xRunTimeStats;
 #endif
 #if 1
+static const CLI_Command_Definition_t xmqttCommand =
+{
+	"mqtt",
+	"\033[1;33mmqtt\033[0m\r\n  mqtt command\r\n",
+	prvMQTTformationCommand,
+	-1,
+	DEVEL_MODE
+};
 static const CLI_Command_Definition_t xDbgCommand =
 {
 	"dbg",
@@ -178,6 +188,14 @@ static const CLI_Command_Definition_t xLoginCommand =
 	ALL_MODE
 };
 #endif
+static const CLI_Command_Definition_t xmotorCommand =
+{
+	"motor\0",
+	"\033[1;33mmotor\033[0m\r\n command default mode\r\n",
+	prvmotorCommand,
+	0,
+	ALL_MODE
+};
 static const CLI_Command_Definition_t xLogoutCommand =
 {
 	"logout\0",
@@ -242,6 +260,8 @@ static const CLI_Command_Definition_t* CommandList[] =
 	#endif
 	&xConfigCommand,
 	&xDbgCommand,
+	&xmqttCommand,
+	&xmotorCommand,
 	&xResetCommand,
 	NULL
 };
@@ -674,6 +694,7 @@ static BaseType_t prvLoginCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 	pdFALSE. */
 	return pdFALSE;
 }
+
 static BaseType_t prvLogoutCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
 	( void ) pcCommandString;
@@ -682,6 +703,81 @@ static BaseType_t prvLogoutCommand( char *pcWriteBuffer, size_t xWriteBufferLen,
 	vRegisterDefaultCLICommands(ALL_MODE);
 	return pdFALSE;
 }
+#define KEY_ESC 27
+/*-----------------------------------------------------------*/
+static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
+{
+	( void ) pcCommandString;
+	( void ) xWriteBufferLen;
+	configASSERT( pcWriteBuffer );
+	sprintf (pcWriteBuffer, "\r\n");
+	uint8_t cRxedChar = 0;
+	uint8_t cInputIndex = 0;
+	while(1)
+	{
+			while(1)
+			{
+                    cRxedChar = GetData();
+                    if(cRxedChar != 0) //ignores null input, 0xFF, CR in CRLF
+                    {
+                        break;
+                    }
+					vTaskDelay(CONSOLE_TASK_DELAY_MS(10));			
+			}
+			switch(cRxedChar)
+			{
+				case 'q':
+					gpio_set_level(SLIDING_PWM_IN, 1);
+				break;
+				case 'w':
+					gpio_set_level(SLIDING_PWM_IN, 0);
+				break;
+				case 'e':
+					gpio_set_level(SLIDING_PWM_CW, 0);
+				break;
+				case 'r':
+					gpio_set_level(SLIDING_PWM_CW, 1);
+				break;
+				case 'a':
+					gpio_set_level(FEED_PWM_IN, 1);
+				break;
+				case 's':
+					gpio_set_level(FEED_PWM_IN, 0);
+				break;
+				case 'd':
+					gpio_set_level(FEED_PWM_CW, 0);
+				break;
+				case 'f':
+					gpio_set_level(FEED_PWM_CW, 1);
+				break;
+				case 'z':
+					gpio_set_level(ACUUM_PWM_IN, 0);
+				break;
+				case 'x':
+					gpio_set_level(ACUUM_PWM_IN, 1);
+				break;
+				case KEY_ESC:
+					gpio_set_level(SLIDING_PWM_IN, 0);
+					gpio_set_level(SLIDING_PWM_CW, 0);
+					gpio_set_level(FEED_PWM_IN, 0);
+					gpio_set_level(ACUUM_PWM_IN, 0);
+					gpio_set_level(FEED_PWM_CW, 0);	
+					return pdFALSE;	
+				break;
+				default:
+					// 기본 초기 출력 상태를 LOW(0)로 세팅
+					gpio_set_level(SLIDING_PWM_IN, 0);
+					gpio_set_level(SLIDING_PWM_CW, 0);
+					gpio_set_level(FEED_PWM_IN, 0);
+					gpio_set_level(ACUUM_PWM_IN, 0);
+					gpio_set_level(FEED_PWM_CW, 0);				
+				break;
+			}
+			
+	}
+	return pdFALSE;
+}
+
 static void vTaskListCustom(void)
 {
     // 1. 현재 시스템의 총 태스크 개수 확인

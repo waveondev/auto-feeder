@@ -1,0 +1,6 @@
+name: 'Jobs-for-AWS-IoT-embedded-sdk'
+license: 'Apache-2.0'
+supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
+originator: 'Organization: Espressif Systems (Shanghai) CO LTD'
+description: 'ESP-IDF port of the AWS IoT Jobs library - library for using the AWS IoT Jobs service on embedded devices.'
+url: https://github.com/espressif/esp-aws-iot

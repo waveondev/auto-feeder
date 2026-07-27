@@ -13,27 +13,23 @@
 #include "vl53l0x_api.h"
 #include "vl53l0x_platform.h"
 #include "app_config_flash.h"
-uint32_t _trace_level;
-int _modules;
+#include "aws_iot_task.h"
+
+
 static const char *TAG = __FILE__;
 
 // ⭐️ ST 공식 API용 디바이스 구조체 전역 변수 선언 (두 채널 분리)
 static VL53L0X_Dev_t dev_tof0;
 
-
 static bool g_tof0_ok = false;
 static uint32_t g_tof0_last_ok_ms = 0;
-
-
 static uint16_t tof0_mm;
-
 uint32_t ts_tof0_ms = 0;
-
 
 #define FILTER_SIZE 10
 static uint32_t TOF_Buf_L[FILTER_SIZE] = {0};
-static uint32_t TOF_Buf_R[FILTER_SIZE] = {0};
-static int buffer_idx_L = 0,    buffer_idx_R = 0;
+
+static int buffer_idx_L = 0;
 
 /**
  * @brief 새로운 데이터를 필터 버퍼에 추가하는 함수
@@ -43,11 +39,6 @@ static void moving_average_update_l(uint16_t new_value) {
     TOF_Buf_L[buffer_idx_L] = new_value;
     buffer_idx_L = (buffer_idx_L + 1) % FILTER_SIZE;
 }
-static void moving_average_update_r(uint16_t new_value) {
-    TOF_Buf_R[buffer_idx_R] = new_value;
-    buffer_idx_R = (buffer_idx_R + 1) % FILTER_SIZE;
-}
-
 /**
  * @brief 현재 버퍼에 쌓인 데이터들의 평균값을 계산하여 반환하는 함수
  * @return float 최근 FILTER_SIZE 개수의 평균값
@@ -60,15 +51,7 @@ uint16_t moving_average_get_L(void) {
 
     return (uint16_t)(sum / FILTER_SIZE);
 }
-uint16_t moving_average_get_R(void) {
-    uint32_t sum = 0;
-    for (int i = 0; i < FILTER_SIZE; i++) {
-        sum += TOF_Buf_R[i];
-    }
 
-    return (uint16_t)(sum / FILTER_SIZE);
-}
-// 💡 내부 헬퍼 함수: 단일 센서 ST C API 초기화 및 아크릴 보정 
 static bool init_single_vl53l0x(VL53L0X_Dev_t *pDevice, i2c_port_t i2c_port, const char *sensor_name)
 {
     VL53L0X_Error status;
@@ -125,11 +108,13 @@ static bool init_single_vl53l0x(VL53L0X_Dev_t *pDevice, i2c_port_t i2c_port, con
 
     return true;
 }
+#include "ble_tracker_id.h"
 #include "debug_cli.h"
 // 💡 센서가 정상적으로 응답하는지 체크하는 디텍트 함수
 bool VL53L0X_Detect(void)
 {
     bool condition_tof0 = false;
+
     app_config_t* app_config = get_app_config();
     // TOF0 조건 체크
     if (g_tof0_ok) {
@@ -138,14 +123,8 @@ bool VL53L0X_Detect(void)
         }
     }
 
-    DBG_Resister_t *DBG_Resister = Debug_Get();
-    if(DBG_Resister->TOF)
-    {
-        if (g_tof0_ok) ESP_LOGI(TAG, "  [TOF0] Distance: %4d mm(raw = %4d)", moving_average_get_L() ,tof0_mm);
-        else           ESP_LOGW(TAG, "  [TOF0] DISCONNECTED");
-    }
     // ⭐️ 둘 중에 하나라도 조건을 만족(OR 연산)하면 true 반환, 둘 다 아니면 false 반환
-    if (condition_tof0) {
+    if (condition_tof0 || GetTracker_Id_active()) {
         return true;
     } else {
         return false;
@@ -156,7 +135,6 @@ bool VL53L0X_Detect(void)
 void VL53L0X_Sensing(void)
 {
     VL53L0X_RangingMeasurementData_t measure_data0;
-    VL53L0X_RangingMeasurementData_t measure_data1;
     uint32_t now_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
     // --- TOF0 (I2C 포트 0) 측정 ---
@@ -174,12 +152,15 @@ void VL53L0X_Sensing(void)
         else {
             ESP_LOGW(TAG, "TOF0 Range Status Warning: %d", measure_data0.RangeStatus);
         }
+        DBG_Resister_t *DBG_Resister = Debug_Get();
+        if(DBG_Resister->TOF)
+        {
+            if (g_tof0_ok) ESP_LOGI(TAG, "  [TOF0] Distance: %4d mm(raw = %4d)", moving_average_get_L() ,tof0_mm);
+            else           ESP_LOGW(TAG, "  [TOF0] DISCONNECTED");
+        }
     }
 
-
-
     moving_average_update_l(tof0_mm);
-
 }
 
 bool TOF_VL53L0X_init(void)
@@ -209,12 +190,14 @@ bool TOF_VL53L0X_init(void)
 
     g_tof0_ok = init_single_vl53l0x(&dev_tof0, I2C_NUM_0, "TOF0_PORT0");
 
+
     if (g_tof0_ok) {
-        ESP_LOGI(TAG, "🎉 양쪽 TOF 센서 모두 아크릴 보정 및 초기화 완벽 성공!");
+        ESP_LOGI(TAG, "양쪽 TOF 센서 모두 아크릴 보정 및 초기화 완벽 성공!");
     } else {
-        ESP_LOGE(TAG, "⚠️ 일부 센서 초기화 실패 (TOF0: %s", 
+        ESP_LOGE(TAG, "센서 초기화 실패 (TOF0: %s)", 
                  g_tof0_ok ? "OK" : "FAIL");
     }
 
     return (g_tof0_ok);
 }
+

@@ -17,6 +17,11 @@
 #include "app_led.h"
 #include "app_adc.h"
 #include "opmode_task.h"
+
+// AWS IoT Provisioning header 추가
+#include "aws_iot_task.h"
+#include "esp_spiffs.h"
+
 extern void tcp_client(void);
 
 #include "esp_vfs_dev.h"
@@ -25,40 +30,57 @@ extern void tcp_client(void);
 #include "motion_task.h"
 #include "ble_tracker_id.h"
 #include "isd2360.h"
+
+
+//[by.jeon] 하드디스크(SPIFFS) 설정 및 초기화 함수
+static esp_vfs_spiffs_conf_t spiffs_conf = {
+  .base_path = "/spiffs",
+  .partition_label = "spiffs_storage",
+  .max_files = 5,
+  .format_if_mount_failed = true
+};
+
+static void filesystem_init(void)
+{
+    ESP_LOGI("SPIFFS", "Initializing SPIFFS");
+    esp_err_t ret = esp_vfs_spiffs_register(&spiffs_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE("SPIFFS", "Failed to mount or format filesystem");
+        return;
+    }
+    ESP_LOGI("SPIFFS", "SPIFFS mounted successfully");
+}
+
 void app_main(void)
 {
-    esp_err_t ret;
-    ret = nvs_flash_init();
+    // =========================================================================
+    // 1️NVS (비휘발성 플래시 메모리) 초기화
+    // AWS 프로비저닝 과정에서 발급받은 "고유 인증서"와 "개인키"를 
+    // 기기의 플래시 메모리에 영구 저장하려면 NVS가 반드시 켜져 있어야 함.
+    // =========================================================================
+    esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS 파티션이 꼬였을 경우 포맷하고 다시 시도하는 방어 코드
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
-#if 0
-        // TX 변환 끄기: \n 그대로 전송
-    esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_LF);
-    esp_vfs_dev_uart_port_set_rx_line_endings(CONFIG_ESP_CONSOLE_UART_NUM,ESP_LINE_ENDINGS_LF);
-    esp_vfs_dev_uart_port_set_tx_line_endings(CONFIG_ESP_CONSOLE_UART_NUM,ESP_LINE_ENDINGS_LF);
-    // RX 쪽도 필요 시 조절 가능
-    esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_LF);
-    ESP_ERROR_CHECK( ret );
-#endif
+    ESP_ERROR_CHECK(ret);
     NVS_Flash_init();
+
+    filesystem_init();
 
     console_task_init();
     init_motor_ledc();
     button_task_init();
-    init_led_strip();
-    LED_task_init();
-    if(sensor_init() == false)
-        led_bit_enable(SENSE_ERR_BIT);
 
-    //isd2360_taskinit();
-    opmode_task_init();
+    LED_task_init();
+    sensor_init();
+    //opmode_task_init();
     Create_Tracker_Capture_Task();
     ble_task_init();
-    //charge_init();
+    isd2360_taskinit();
 
-    //mqtt_client_connect()
-    //if(wifi_info_get_used())
+
     wifi_init();
+    aws_iot_task_init();
 }

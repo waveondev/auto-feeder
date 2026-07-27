@@ -1,0 +1,6 @@
+name: 'backoffAlgorithm'
+license: 'Apache-2.0'
+supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
+originator: 'Organization: Espressif Systems (Shanghai) CO LTD'
+description: 'ESP-IDF port of the backoffAlgorithm library - algorithm for calculating exponential backoff with jitter for network retry attempts.'
+url: https://github.com/espressif/esp-aws-iot

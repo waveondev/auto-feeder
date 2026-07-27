@@ -7,13 +7,14 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_timer.h"
 #include "app_config_flash.h"
 #include "app_led.h"
 #include "debug_cli.h"
+#include "tx_mqtt.h"
+#include "aws_iot_task.h"
 static const char *TAG = __FILE__;
 // 필터 설정값 (상황에 맞게 조절)
-#define FILTER_ALPHA   0.60f  // 0.0 ~ 1.0 (낮을수록 부드럽지만 반응이 느려짐)
+#define FILTER_ALPHA   0.80f  // 0.0 ~ 1.0 (낮을수록 부드럽지만 반응이 느려짐)
 #define DEADBAND_LIMIT 0.05f  // 이 값보다 작은 변화는 노이즈로 보고 무시 (단위: g 또는 kg)
 
 static float filtered_weight = 0.0f; // 현재 필터링된 최종 무게값
@@ -24,14 +25,103 @@ static float filtered_weight = 0.0f; // 현재 필터링된 최종 무게값
 [SENSOR] Weight: 347.7 g (raw: 346721) 모터+물통
 [SENSOR] Weight: 379.8 g (raw: 366308) 전체
 
-#endif
-typedef struct  { uint32_t t; float w; }WSample;
+I (795771) ./main/app_config_flash.c:   - HX1 Scale Factor     : 126.67
+I (795771) ./main/app_config_flash.c:   - HX1 Tare Offset      : 385928
+I (795781) ./main/app_config_flash.c:   - case_raw_data        : 386878
 
-static WSample g_wbuf[10];
+I (1743541) ./main/app_config_flash.c:   - HX1 Scale Factor     : 182.23
+I (1743541) ./main/app_config_flash.c:   - HX1 Tare Offset      : 260188
+I (1743551) ./main/app_config_flash.c:   - case_raw_data        : 261253
+
+#endif
+#if 0
+typedef struct  { uint32_t t; float w; }WSample;
+#define BUFFER_SIZE  10
+
+static WSample g_wbuf[BUFFER_SIZE];
 static uint8_t g_wbuf_n = 0;
 static uint8_t g_wbuf_i = 0;
 static uint16_t hx711_cal_enable = 0;
 
+static float raw_buffer[BUFFER_SIZE];
+static int current_count = 0; // 현재 버퍼에 저장된 데이터 개수 (초기값 0)
+// 1이면 "물 보충 중", 0이면 "대기/안정 상태"
+int water_refill_flag = 0; 
+float start_water = 0;
+static uint32_t start_index = 30;
+void insert_to_raw_buffer(float new_data)
+{
+    if (start_index) {
+        start_index--;
+        return;
+    }
+    // 1. 로드셀 신규 무게 데이터를 버퍼 맨 뒤에 삽입
+    if (current_count < BUFFER_SIZE) {
+        raw_buffer[current_count] = new_data;
+        current_count++;
+    } 
+    else {
+        memmove(&raw_buffer[0], &raw_buffer[1], (BUFFER_SIZE - 1) * sizeof(float));
+        raw_buffer[BUFFER_SIZE - 1] = new_data;
+    }
+
+    // 데이터가 버퍼 크기만큼 쌓이기 시작하면 판정
+    if (current_count >= BUFFER_SIZE) 
+    {
+        // =================================================================
+        // 2. [물 보충 시작 판정] 
+        // 최근 기준점(raw_buffer[0])보다 현재 무게(new_data)가 3.0g 이상 "실제 증가"했을 때!
+        // (fabs를 제거하여 감소(-g)하는 음수 상황에는 절대로 반응하지 않습니다)
+        // =================================================================
+        if ((new_data - raw_buffer[0]) >= 3.0f) 
+        {
+            if (water_refill_flag == 0)
+            {
+                start_water = raw_buffer[0]; // 보충 시작 직전 무게 픽스
+                water_refill_flag = 1; 
+                ESP_LOGI(TAG, "💧 물 보충 시작 감지! (시작 무게: %.2fg, 현재: %.2fg)", start_water, new_data);
+            }
+        }
+
+        // =================================================================
+        // 3. [물 보충 종료 판정]
+        // 물이 다 차서 더 이상 g이 안 늘어나고, 최근 10개 데이터가 안정화되었는지 검사
+        // =================================================================
+        if (water_refill_flag == 1) 
+        {
+            int check_count = (current_count < 10) ? current_count : 10;
+            int stable_data_count = 0;
+
+            // 최근 10개의 데이터 변화폭 검사
+            for (int i = 0; i < check_count; i++) 
+            {
+                int index = current_count - 1 - i;
+                
+                // 현재 무게(new_data)와 최근 10개 측정값들의 차이가 3.0g 미만으로 정체되어 있다면
+                // (즉, 물을 더 이상 붓지 않고 수위가 멈춰있다면)
+                if (fabs(new_data - raw_buffer[index]) < 3.0f) 
+                {
+                    stable_data_count++;
+                }
+            }
+
+            // 최근 10개 데이터가 모두 멈춰서 안정화되었고, 
+            // 최종 무게가 시작 무게보다 큰 경우(+g)에만 물 보충 정상 완료 처리!
+            if (stable_data_count == check_count) 
+            {
+                float total_refilled = new_data - start_water;
+
+                if (total_refilled >= 10.0f) { // 최소 3g 이상 보충되었을 때만 성공 처리
+                    ESP_LOGI(TAG, "물 보충 완료! (총 보충량: +%.2fg, 최종무게: %.2fg)", total_refilled, new_data);
+                } else {
+                    ESP_LOGW(TAG, "일시적 노이즈로 보충 취소됨");
+                }
+
+                water_refill_flag = 0; // 플래그 리셋
+            }
+        }
+    }
+}
 static unsigned long millis() {
   return (unsigned long)(esp_timer_get_time() / 1000ULL);
 }
@@ -244,21 +334,49 @@ void HX711_Sensing(void)
             push_weight_sample(clean_weight);
             
             // 로그 출력 시 날것의 값(w)과 필터링된 값(clean_weight)을 함께 비교해 보세요.
-            
+            insert_to_raw_buffer(w);
         }
         
         float avg_val = moving_average_calc();
         DBG_Resister_t *DBG_Resister = Debug_Get();
+        // 💡 구조체 멤버에서 안전하게 값을 지역 변수로 먼저 꺼냅니다.
+        // 이렇게 하면 비교 시점에 메모리 불일치로 인한 오작동을 차단할 수 있습니다.
+        float safe_min_threshold = (float)app_config->min_weight_threshold; 
+        int32_t safe_case_raw = (int32_t)app_config->case_raw_data;
+
+        // 디버깅 로그로 복사된 실제 값을 찍어서 200이 맞는지 확실히 검증합니다.
+        //ESP_LOGI("DEBUG", "avg_val: %.2f | safe_min: %.2f | raw: %d | safe_case_raw: %d", 
+                //avg_val, safe_min_threshold, raw, safe_case_raw);
+
+
         if(DBG_Resister->HX711)
         {
             ESP_LOGI(TAG, " Raw: %.2f g | Filtered: %.2f g (raw_bits: %d)\r\n", w, moving_average_calc(), raw);
         }
-        if(avg_val < 200.0f || raw < app_config->case_raw_data)
+        // 💡 이제 안전한 로컬 변수끼리만 비교합니다.
+        if (avg_val < safe_min_threshold) // 물부족
         {
+            if(!led_bit_status(HARDWARE_ERR_BIT))
+            {
+                led_bit_enable(HARDWARE_ERR_BIT);
+                water_fault_enable(WATER_LOW_FAULT);
+                
+            }       
+        }       
+        if(raw < safe_case_raw)//물그릇 탐지
+        {
+            if(!led_bit_status(HARDWARE_ERR_BIT))
+            {
+                led_bit_enable(HARDWARE_ERR_BIT);
+                water_fault_enable(WATER_BOWL_DETACHED_FAULT);
+            }
 
-            led_bit_enable(HARDWARE_ERR_BIT);
         }
-        if(hardware_error_enable() && avg_val > 201.0f && raw > app_config->case_raw_data)
+        // 💡 3. 에러 해제 조건식도 안전한 로컬 변수로 교체합니다.
+        // 흔들림 방지(히스테리시스)를 위해 임계값(200)보다 1g 큰 safe_min_threshold + 1.0f(즉, 201.0f)로 대칭을 맞춥니다.
+        float safe_release_threshold = safe_min_threshold + 1.0f; 
+
+        if(hardware_error_enable() && avg_val > safe_release_threshold && raw > safe_case_raw)
         {
             led_bit_disable(HARDWARE_ERR_BIT);
         }
@@ -298,4 +416,116 @@ bool HX711_init(void)
     vTaskDelay(pdMS_TO_TICKS(500));
     return hx711_read_raw(&raw);
 }
+#else
+#include "hx711_lib.h"
+static int32_t hx711_data;
+static int32_t hx711_data_buf;
+#define CASE_WEIGHT 197700
+hx711_t dev = {
+    .dout = PIN_HX711_DOUT,
+    .pd_sck = PIN_HX711_SCK,
+    .gain = HX711_GAIN_A_64
+};
+static uint16_t hx711_cal_enable = 0;
+
+static void HX711_cal_process(void)
+{
+    app_config_t* app_config = get_app_config();
+
+    int32_t cal_data = 0;
+
+    while(hx711_read_average(&dev, 100, &cal_data) != ESP_OK){}
+    app_config->case_raw_data = cal_data;
+    app_nvs_save_set();
+    ESP_LOGI(TAG, "Tare offset set to %d\r\n", app_config->hx1_offset);
+}
+void HX711_cal_init(uint16_t cal)
+{
+    hx711_cal_enable = 1;
+}
+float loadcell_data_get(void)
+{
+    int case_weight = 0;
+    app_config_t* app_config = get_app_config();
+    if(app_config->case_raw_data == 0)
+        case_weight = CASE_WEIGHT;
+    else
+        case_weight = app_config->case_raw_data;
+    int32_t case_data = hx711_data_buf - case_weight;
+    float Data = (float)case_data / 100.0f;
+    return Data;
+}
+void HX711_Sensing(void)
+{
+    esp_err_t r;
+    DBG_Resister_t *DBG_Resister = Debug_Get();
+    app_config_t* app_config = get_app_config();
+    if(hx711_cal_enable)
+    {
+        hx711_cal_enable = 0;
+        HX711_cal_process();
+    }    
+    r = hx711_read_average(&dev, 5, &hx711_data);
+    if (r != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Could not read data: %d (%s)", r, esp_err_to_name(r));
+        return;
+    }
+    hx711_data_buf = hx711_data;
+    if(DBG_Resister->HX711)
+    {
+            ESP_LOGI(TAG, "hx711_data: (%d)",hx711_data_buf);
+    }
+    int case_weight = 0;
+    float safe_min_threshold = (float)app_config->min_weight_threshold; 
+
+    if(DBG_Resister->HX711)
+    {
+        ESP_LOGI(TAG, " Raw: %.2f g", loadcell_data_get());
+    }
+
+    if(loadcell_data_get() < 0)//물그릇 탐지
+    {
+        if(!led_bit_status(HARDWARE_ERR_BIT))
+        {
+            led_bit_enable(HARDWARE_ERR_BIT);
+            water_fault_enable(WATER_BOWL_DETACHED_FAULT);
+        }
+    }
+    else
+    {
+        // 💡 이제 안전한 로컬 변수끼리만 비교합니다.
+        if (loadcell_data_get() < safe_min_threshold) // 물부족
+        {
+            if(!led_bit_status(HARDWARE_ERR_BIT))
+            {
+                led_bit_enable(HARDWARE_ERR_BIT);
+                water_fault_enable(WATER_LOW_FAULT);
+                
+            }       
+        }       
+    }
+
+    // 💡 3. 에러 해제 조건식도 안전한 로컬 변수로 교체합니다.
+    // 흔들림 방지(히스테리시스)를 위해 임계값(200)보다 1g 큰 safe_min_threshold + 1.0f(즉, 201.0f)로 대칭을 맞춥니다.
+    float safe_release_threshold = safe_min_threshold + 10.0f; 
+
+    if(hardware_error_enable() && loadcell_data_get() > safe_release_threshold && loadcell_data_get() > 0)
+    {
+        led_bit_disable(HARDWARE_ERR_BIT);
+        water_fault_disable(WATER_LOW_FAULT);
+        water_fault_disable(WATER_BOWL_DETACHED_FAULT);
+    }
+}
+
+
+bool HX711_init(void)
+{
+
+    hx711_init(&dev);
+    return true;
+}
+#endif
+
+
 

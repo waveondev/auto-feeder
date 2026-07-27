@@ -6,7 +6,8 @@
 
 #define MOTION_START_RESPONSE 0x10
 #define MOTION_DATA           0x11
-
+#define HEALTH_DATA_REQUEST   0x12
+#define HEALTH_DATA_RESPONSE  0x13
 
 #define MOTION_START_REQUEST  0x20
 #define MOTION_DATA_ACK       0x21
@@ -21,6 +22,19 @@ typedef union {
     } bit;                   
     uint16_t word;           
 } pack_data;
+
+typedef union {
+      struct {
+        uint8_t Bat_Status : 2;  
+        uint8_t IMU_Err : 1;  
+        uint8_t BLE_Err : 1;  
+        uint8_t storage : 1;
+        uint8_t reset_reason : 2;
+        uint8_t reserved : 1;
+    } bit;    
+    uint8_t byte;
+} fault_code;
+
 #pragma pack(push, 1)
 typedef struct {
   uint8_t event_code;
@@ -28,10 +42,9 @@ typedef struct {
   {
       struct
       {
-
         uint8_t interval;
         uint16_t total_points;
-        uint16_t padding[8];
+        uint16_t padding[5];
       } motion_req;
       struct
       {
@@ -46,6 +59,23 @@ typedef struct {
         pack_data pack_data_7;
         pack_data pack_data_8;
       } motion_data;
+      struct
+      {
+        uint8_t req_type;
+        uint16_t padding[9];
+      } health_data_req;
+      struct
+      {
+        uint32_t uptime_sec;
+        uint8_t Bat_Level;
+        uint8_t Bat_Voltage;
+        uint8_t major;
+        uint8_t minor;
+        uint8_t patch;
+        int8_t target_rssi;
+        fault_code fault_flag;
+        uint16_t padding[4];
+      } health_data_res;
       struct
       {
         uint8_t req_type;
@@ -72,6 +102,7 @@ typedef struct {
 } Motion_Packet_t;
 #pragma pack(pop)
 
-void BLE_Receive_data(uint8_t* data, uint16_t len);
+
+void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len);
 #endif
 

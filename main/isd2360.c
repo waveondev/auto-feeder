@@ -194,7 +194,7 @@ void isd2360_spi_init(void) {
         .command_bits = 0,
         .address_bits = 0,
         .dummy_bits = 0,
-        .mode = 3, 
+        .mode = 0, 
         .duty_cycle_pos = 0, 
         .cs_ena_pretrans = 0,
         .cs_ena_posttrans = 0,

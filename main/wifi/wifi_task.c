@@ -11,9 +11,10 @@
 
 #include "protocol_examples_common.h"
 #include "example_common_private.h"
-#include "mqtt_main.h"
 #include "app_led.h"
 #include "ble_task.h"
+#include "app_config_flash.h"
+
 static const char* TAG = __FILE__;
 
 #define USER_CONFIG_EXAMPLE_WIFI_SSID "iptime_lab0"
@@ -24,7 +25,10 @@ static const char* TAG = __FILE__;
 #include <esp_https_ota.h>
 
 #include <esp_ota_ops.h>
-// 💡 메인 초기화 부분에 선언해두었던 이벤트 그룹과 비트들을 가져옵니다 (extern 또는 동일 파일 내 선언)
+#include "esp_netif_sntp.h"
+#include "esp_sntp.h"  // v5.x 호환용
+
+//메인 초기화 부분에 선언해두었던 이벤트 그룹과 비트들을 가져옵니다 (extern 또는 동일 파일 내 선언)
 EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
@@ -49,6 +53,7 @@ void Wifi_Disconnect(void)
     } else {
         ESP_LOGI(TAG, "현재 연결된 AP가 없습니다. 해제 생략.");
     }
+   
 }
 
 /**
@@ -56,7 +61,7 @@ void Wifi_Disconnect(void)
  */
 void Wifi_Connect(const char* target_ssid, const char* target_password)
 {
-    led_bit_enable(PAIRING_BIT);
+
 
     // 1. 만약 어딘가 연결되어 있다면 먼저 끊어줍니다.
     Wifi_Disconnect();
@@ -75,7 +80,6 @@ void Wifi_Connect(const char* target_ssid, const char* target_password)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi 설정 적용 실패!");
         ble_send_data_to_queue((uint8_t*)"CONNECT_AP FAIL", strlen("CONNECT_AP FAIL"));
-        led_bit_disable(PAIRING_BIT);
         return;
     }
 
@@ -98,17 +102,16 @@ void Wifi_Connect(const char* target_ssid, const char* target_password)
     // 8. 대기 결과에 따른 처리
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "새 AP 연결 최종 성공!");
-        ble_send_data_to_queue((uint8_t*)"CONNECT_AP SUCCESS", strlen("CONNECT_AP SUCCESS"));
+        //ble_send_data_to_queue((uint8_t*)"CONNECT_AP SUCCESS", strlen("CONNECT_AP SUCCESS"));
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGE(TAG, "새 AP 연결 실패 (비밀번호 오류 또는 AP 없음)!");
-        ble_send_data_to_queue((uint8_t*)"CONNECT_AP FAIL", strlen("CONNECT_AP FAIL"));
+        //ble_send_data_to_queue((uint8_t*)"CONNECT_AP FAIL", strlen("CONNECT_AP FAIL"));
     } else {
         ESP_LOGE(TAG, "새 AP 연결 타임아웃! (15초 초과)");
-        ble_send_data_to_queue((uint8_t*)"CONNECT_AP TIMEOUT", strlen("CONNECT_AP TIMEOUT"));
+        //ble_send_data_to_queue((uint8_t*)"CONNECT_AP TIMEOUT", strlen("CONNECT_AP TIMEOUT"));
         esp_wifi_disconnect(); // 타임아웃 났으니 연결 시도 중단
     }
 
-    led_bit_disable(PAIRING_BIT);
 }
 /*
 void wifi_init_sta_static_ip(char* WIFI_SSID, char* WIFI_PASS)
@@ -145,9 +148,7 @@ void wifi_init_sta_static_ip(char* WIFI_SSID, char* WIFI_PASS)
     ESP_LOGI(TAG, "Wi-Fi STA static IP setup done");
 }*/
 
-#define WIFI_MAX_VALUE 30
-static wifi_ap_record_t ap_list[WIFI_MAX_VALUE];
-
+wifi_ap_record_t ap_list[WIFI_MAX_VALUE];
 
 uint16_t remove_duplicate_best_rssi(wifi_ap_record_t *list, uint16_t count)
 {
@@ -190,53 +191,7 @@ uint16_t remove_duplicate_best_rssi(wifi_ap_record_t *list, uint16_t count)
 
     return new_count;
 }
-#if 0
-uint16_t wifi_scan_start(void)
-{
-// 3. Wi-Fi 스캔 설정 및 시작
-    wifi_scan_config_t scan_config = {
-        .ssid = NULL,
-        .bssid = NULL,
-        .channel = 0,
-        .show_hidden = false, // 숨겨진 SSID도 스캔
-        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-        .scan_time.active.min = 0,
-        .scan_time.active.max = 0
-    };
 
-    memset(ap_list,0,sizeof(ap_list));
-    ap_count = 0;
-
-    ESP_LOGI(TAG, "Wi-Fi 스캔 시작...");
-    // true로 설정하면 스캔이 완료될 때까지 블로킹(대기)합니다.
-    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true)); 
-
-    // 4. 스캔된 AP 개수 확인 및 리스트 가져오기
-    uint16_t number = WIFI_MAX_VALUE; // 최대 가져올 AP 개수
-
-
-
-
-    // ⭐ 순서 변경: 실제 발견된 총 개수를 먼저 확인합니다.
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-
-
-    // 발견된 게 있다면 버퍼 크기(20) 내에서 레코드를 가져옵니다.
-    if (ap_count > 0) {
-        if (ap_count < number) {
-            number = ap_count; // 실제 개수만큼만 가져오도록 제한
-        }
-        ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_list));
-        number = remove_duplicate_best_rssi(ap_list, number);
-        for (int i = 0; i < number; i++) {
-            ESP_LOGI(TAG, "SSID: %s | RSSI: %d | 채널: %d", 
-                    ap_list[i].ssid, ap_list[i].rssi, ap_list[i].primary);
-        }
-        ESP_LOGI(TAG, "총 %d 개의 AP를 찾았습니다.", number);
-    }
-    return number;
-}
-#else
 uint16_t wifi_scan_start(void)
 {
     // 스캔 설정
@@ -249,12 +204,11 @@ uint16_t wifi_scan_start(void)
         .scan_time.active.min = 0,
         .scan_time.active.max = 0
     };
-    led_bit_enable(PAIRING_BIT);
+
     // 전역/기존 버퍼 초기화
     memset(ap_list, 0, sizeof(ap_list));
     uint16_t total_found_count = 0; // 중복 제거 후 최종적으로 모은 AP 개수
 
-    // ⭐️ [반복문 도입] 최대 3번 스캔 시도
     for (int scan_iter = 1; scan_iter <= 3; scan_iter++) {
         ESP_LOGI(TAG, "[스캔 %d회차] Wi-Fi 스캔 시작...", scan_iter);
         
@@ -301,10 +255,9 @@ uint16_t wifi_scan_start(void)
 
         ESP_LOGI(TAG, "[스캔 %d회차 결과] 현재까지 중복 제거 후 수집된 AP: %d개 / 목표: %d개", 
                  scan_iter, total_found_count, WIFI_MAX_VALUE);
-
-        // ⭐️ [조기 탈출 조건] 목표한 개수(WIFI_MAX_VALUE)를 다 채웠다면 3번 다 안 돌고 즉시 탈출!
+                
         if (total_found_count >= WIFI_MAX_VALUE) {
-            ESP_LOGI(TAG, "🎯 목표한 개수(%d개)를 모두 채워 스캔을 조기 종료합니다.", WIFI_MAX_VALUE);
+            ESP_LOGI(TAG, "목표한 개수(%d개)를 모두 채워 스캔을 조기 종료합니다.", WIFI_MAX_VALUE);
             break; 
         }
 
@@ -313,35 +266,51 @@ uint16_t wifi_scan_start(void)
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     }
-    char strbuf[100];
-    
-    ble_send_data_to_queue((uint8_t*)strbuf,sprintf((char*)strbuf,"SCAN %d",total_found_count));
-    vTaskDelay(pdMS_TO_TICKS(200));
-    
-    // 🏁 최종 수집된 결과 로그 출력
-    for (int i = 0; i < total_found_count; i++) {
-        ESP_LOGI(TAG, "-> 최종 리스트 [%d] SSID: %s | RSSI: %d | 채널: %d", 
-                 i, ap_list[i].ssid, ap_list[i].rssi, ap_list[i].primary);
 
-            int len = snprintf(
-                strbuf,
-                sizeof(strbuf),
-                "%d %s %d",
-                i,
-                ap_list[i].ssid,
-                ap_list[i].rssi
-            );
-
-            ble_send_data_to_queue(
-                (uint8_t*)strbuf,
-                len
-            );
-    }
     ESP_LOGI(TAG, "최종 스캔 종료: 총 %d 개의 AP 확정", total_found_count);
-    led_bit_disable(PAIRING_BIT);
     return total_found_count;
 }
-#endif
+
+
+
+// [단계 2] NTP 서버로부터 시간이 실제로 동기화되었을 때 호출되는 콜백 함수
+void time_sync_notification_cb(struct timeval *tv) {
+    ESP_LOGI(TAG, "NTP 시간 동기화 완료!");
+    
+    // 한국 표준시(KST) 세팅 (UTC + 9시간)
+    setenv("TZ", "KST-9", 1);
+    tzset();
+
+    // 현재 시간 예쁘게 출력해보기
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    char strftime_buf[64];
+    strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    ESP_LOGI(TAG, "현재 한국 시간: %s", strftime_buf);
+}
+
+// [단계 1] 와이파이 연결 성공 시 호출할 SNTP 초기화 함수
+void sntp_init_and_sync(void) {
+    if (esp_sntp_enabled()) {
+        ESP_LOGI(TAG, "SNTP가 이미 실행 중입니다. 중복 초기화를 스킵합니다.");
+        return;
+    }
+    ESP_LOGI(TAG, "SNTP 초기화 및 시간 요청 시작...");
+    
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    
+    // 전 세계 공용 또는 한국 공용 NTP 서버 설정
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.windows.com"); // 백업용
+    
+    // 콜백 등록 (시간이 정상 수신되면 알림을 받음)
+    esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
+    
+    esp_sntp_init();
+}
 // 백그라운드 이벤트 핸들러
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
@@ -349,9 +318,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         // 💡 중요: 여기서 esp_wifi_connect()를 절대 호출하지 않습니다!
         // 드라이버가 준비 완료(Start) 되었다는 로그만 남깁니다.
+        led_bit_enable(PAIRING_BIT);
         ESP_LOGI(TAG, "Wi-Fi 드라이버가 준비되었습니다 (STA_START).");
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+            led_bit_enable(PAIRING_BIT);
             if (s_allow_reconnect) {
                 if (s_retry_num < MAXIMUM_RETRY) {
                     esp_wifi_connect();
@@ -367,12 +338,15 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "IP 할당 완료: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
+        led_bit_disable(PAIRING_BIT);
+        wifi_connect_success();
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        sntp_init_and_sync();
     }
 }
 void wifi_init(void)
 {
-s_wifi_event_group = xEventGroupCreate();
+    s_wifi_event_group = xEventGroupCreate();
 
     // 1. TCP/IP 스택 및 기본 이벤트 루프 초기화
     ESP_ERROR_CHECK(esp_netif_init());
@@ -392,4 +366,10 @@ s_wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI("WIFI", "Wi-Fi 초기화 완료! (대기 또는 자동 연결 진행 중)");
+
+    app_wifi_config_t* wifi_config = get_wifi_config();
+    if ((wifi_config->conn_ssid[0] != '\0') &&  (wifi_config->conn_password[0] != '\0'))
+        Wifi_Connect((char*)wifi_config->conn_ssid,(const char*)wifi_config->conn_password);
+
+
 }

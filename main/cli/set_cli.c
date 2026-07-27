@@ -5,7 +5,9 @@
 #include "app_HX711.h"
 #include "opmode_task.h"
 #include "app_config_flash.h"
-
+#include "ble_parse.h"
+#include "ble_task.h"
+#include "gpio_util.h"
 BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
     const char *pcParameter;
@@ -16,7 +18,10 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
     int  offset=0;
     int j;
     int	val32 = 0;
-	
+	app_wifi_config_t* wifi_config = get_wifi_config();
+	app_config_t* app_config = get_app_config();
+	uint32_t* Filter_Used_Time = get_filter_time();
+	uint32_t* Motor_Used_Time = get_motor_time();
 	/* Remove compile time warnings about unused parameters, and check the
 	write buffer is not NULL.  NOTE - for simplicity, this example assumes the
 	write buffer length is adequate, so does not check for buffer overflows. */
@@ -71,11 +76,6 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				offset += sprintf (&pcWriteBuffer[offset], "\r\nset \r\n");
 			}
-
-			else if (!strncmp(ag[1], "moter", 5))
-			{
-                start_motor_with_boost(atoi(ag[2]),atoi(ag[3]));
-            }
 			else if (!strncmp(ag[1], "duty", 4))
 			{
 				set_motor_speed_percent(atoi(ag[2]));
@@ -121,7 +121,101 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				reset_all_nvs_data();
 			}
-		
+			else if (!strncmp(ag[1], "bleota", 6))
+			{
+				motion_msg_send(OTA_MODE_REQUEST,1);
+			}
+			else if (!strncmp(ag[1], "motion", 6))
+			{
+				motion_msg_send(MOTION_START_REQUEST,1);
+			}	
+			else if (!strncmp(ag[1], "health", 6))
+			{
+				motion_msg_send(HEALTH_DATA_REQUEST,1);
+			}	
+			else if (!strncmp(ag[1], "rm", 2))
+			{
+				if (!strncmp(ag[2], "wifi", 4))
+				{
+					memset(wifi_config, 0,sizeof(app_wifi_config_t));
+					wifi_nvs_save_set();
+				}	
+				if (!strncmp(ag[2], "app", 3))
+				{
+					float hx1_scale_buf;
+					int32_t hx1_offset_buf;
+					uint32_t case_raw_data_buf;
+					hx1_scale_buf = app_config->hx1_scale;
+					hx1_offset_buf = app_config->hx1_offset;
+					case_raw_data_buf = app_config->case_raw_data;
+					memset(app_config, 0,sizeof(app_config_t));
+					app_config->op_mode = OP_MODE_NORMAL;
+					app_config->pump_clean_duration = 180;
+					app_config->filter_life_days = 30;
+					app_config->moter_life_days = 60;
+					app_config->min_weight_threshold = 200;
+					app_config->splash_delta_g = 100;
+					app_config->gate_way_rssi_th = -85;
+					app_config->hx1_scale = 1000.0f;
+					app_config->hx1_offset = 0;
+					app_config->case_raw_data = 0;
+					app_config->tof_sense_threshold_l = 250;
+					app_config->tof_sense_threshold_r = 250;
+					app_config->motion_data_time = 1800;
+					app_config->EFFECTIVE_DWELL_TIME = 5;
+					sprintf(app_config->env_mode,"dev");
+					if(atoi(ag[3]))
+					{
+						app_config->hx1_scale = hx1_scale_buf;
+						app_config->hx1_offset = hx1_offset_buf;
+						app_config->case_raw_data = case_raw_data_buf;
+					}
+
+					app_nvs_save_set();
+				}										
+			}	
+			#define SECONDS_IN_DAYS    (24UL * 60UL * 60UL)
+			else if (!strncmp(ag[1], "filter", 6))
+			{
+				if(atoi(ag[2]))
+					(*Filter_Used_Time) = (app_config->filter_life_days * SECONDS_IN_DAYS)-2;
+				else
+				 	filter_change();
+			}	
+			else if (!strncmp(ag[1], "motor", 5))
+			{
+				if(atoi(ag[2]))
+					(*Motor_Used_Time) = (app_config->moter_life_days * SECONDS_IN_DAYS)-2;
+				else
+				 	motor_change();
+			}	
+			else if (!strncmp(ag[1], "slid", 4))
+			{
+				if(atoi(ag[2]))
+					 gpio_set_level(SLIDING_PWM_IN, 1);
+				else
+				 	 gpio_set_level(SLIDING_PWM_IN, 0);
+			}	
+			else if (!strncmp(ag[1], "feed", 4))
+			{
+				if(atoi(ag[2]))
+					 gpio_set_level(FEED_PWM_IN, 1);
+				else
+				 	 gpio_set_level(FEED_PWM_IN, 0);
+			}	
+			else if (!strncmp(ag[1], "acuum", 5))
+			{
+				if(atoi(ag[2]))
+					 gpio_set_level(ACUUM_PWM_IN, 1);
+				else
+				 	 gpio_set_level(ACUUM_PWM_IN, 0);
+			}	
+			else if (!strncmp(ag[1], "wificon", 7))
+			{
+				app_wifi_config_t* wifi_config = get_wifi_config();
+				Wifi_Connect((char*)wifi_config->conn_ssid,(const char*)wifi_config->conn_password);
+			}	
+
 			/* There are more parameters to return after this one. */
 //			pcWriteBuffer[ 0 ] = 0x00;
 			xReturn = pdFALSE;

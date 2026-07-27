@@ -10,7 +10,7 @@ typedef struct {
     uint32_t DBG_EN      : 1;  // 1비트 사용 (0 ~ 1)
     uint32_t TOF         : 1;  // 1비트 사용
     uint32_t HX711       : 1;  // 1비트 사용
-    uint32_t moter       : 1;  // 1비트 사용
+    uint32_t motor       : 1;  // 1비트 사용
     uint32_t adc         : 1;  // 4비트 사용 (0 ~ 15)
     uint32_t button      : 1; // 12비트 사용 (0 ~ 4095)
     uint32_t ble         : 1; // 12비트 사용 (0 ~ 4095)

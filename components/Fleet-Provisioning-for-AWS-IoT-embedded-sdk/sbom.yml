@@ -1,0 +1,6 @@
+name: 'Fleet-Provisioning-for-AWS-IoT-embedded-sdk'
+license: 'Apache-2.0'
+supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
+originator: 'Organization: Espressif Systems (Shanghai) CO LTD'
+description: 'ESP-IDF port of the AWS IoT Fleet Provisioning library - library for using the Fleet Provisioning feature of AWS IoT Core on embedded devices.'
+url: https://github.com/espressif/esp-aws-iot

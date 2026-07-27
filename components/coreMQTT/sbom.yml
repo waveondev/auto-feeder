@@ -1,0 +1,6 @@
+name: 'coreMQTT'
+license: 'Apache-2.0'
+supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
+originator: 'Organization: Espressif Systems (Shanghai) CO LTD'
+description: 'ESP-IDF port of the coreMQTT library - client implementation of the MQTT 3.1.1 specification for embedded devices.'
+url: https://github.com/espressif/esp-aws-iot

@@ -1,0 +1,6 @@
+name: 'aws-iot-core-mqtt-file-streams-embedded-c'
+license: 'Apache-2.0'
+supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
+originator: 'Organization: Espressif Systems (Shanghai) CO LTD'
+description: 'ESP-IDF port of the AWS IoT MQTT file streams library for OTA updates and file transfer on embedded devices.'
+url: https://github.com/espressif/esp-aws-iot

@@ -20,10 +20,10 @@
 #include "motion_task.h"
 #include "ble_tracker_id.h"
 #include "opmode_task.h"
-
+#include "device_config.h"
 static const char *TAG = __FILE__;
 
-#define DEVICE_NAME "Wave_Peri3"
+#define DEVICE_NAME "Wave_Peri2"
 #define MY_UUID128_BASE(XX, YY) \
     BLE_UUID128_DECLARE(0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, \
                         0xF3, 0x93, 0xB5, 0xA3, YY, XX, 0x40, 0x6E)
@@ -43,13 +43,18 @@ static uint16_t ble_spp_svc_gatt_notify_val_handle;
 static bool conn_handle_subs[CONFIG_BT_NIMBLE_MAX_CONNECTIONS + 1];
 static esp_timer_handle_t Mac_sending_timer;
 
+
+
 extern void ble_store_config_init(void);
 static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg);
 
 static uint16_t current_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool is_phone_connected = false;
 static QueueHandle_t ble_rx_queue = NULL;
-static QueueHandle_t ble_tx_queue = NULL; // 🔴 이름을 수신용(rx)에서 송신용(tx) 개념으로
+static QueueHandle_t ble_tx_queue = NULL; // 이름을 수신용(rx)에서 송신용(tx) 개념으로
+
+uint16_t g_ble_max_payload = 20; // ble로 최대 보낼 수 있는 Length 저장
+#define BLE_TRX_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 
 static void ble_spp_server_print_conn_desc(struct ble_gap_conn_desc *desc)
 {
@@ -152,15 +157,17 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_CONNECT:
         MODLOG_DFLT(INFO, "connection %s; status=%d \n",
                     event->connect.status == 0 ? "established" : "failed", event->connect.status);
-        is_phone_connected = true;
-        ESP_ERROR_CHECK(esp_timer_start_periodic(Mac_sending_timer, 1000000));
         ESP_LOGE(TAG, "BLE_GAP_EVENT_CONNECT");
+        is_phone_connected = true;
+        if (esp_timer_is_active(Mac_sending_timer)) {
+            esp_timer_stop(Mac_sending_timer);
+        }
+        ESP_ERROR_CHECK(esp_timer_start_periodic(Mac_sending_timer,    3000000));
+
         
         current_conn_handle = event->connect.conn_handle;
-        MotionSetTimer(is_phone_connected);
+        //MotionSetTimer(is_phone_connected); by.jeon 이 타이머를 왜 돌리는거죠?
         if (event->connect.status == 0) {
-
-
             if (ble_gap_conn_find(event->connect.conn_handle, &desc) == 0) {
                 ble_spp_server_print_conn_desc(&desc);
             }
@@ -171,8 +178,11 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
-            ESP_LOGE(TAG, "BLE_GAP_EVENT_DISCONNECT");
+        ESP_LOGE(TAG, "BLE_GAP_EVENT_DISCONNECT");
         MODLOG_DFLT(INFO, "disconnect; reason=%d \n", event->disconnect.reason);
+        if (esp_timer_is_active(Mac_sending_timer)) {
+            esp_timer_stop(Mac_sending_timer);
+        }
         current_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         is_phone_connected = false;
         MotionSetTimer(is_phone_connected);
@@ -231,7 +241,7 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         //    * 만약 -55보다 신호가 쌘 것(-50, -40 dBm 등)을 원하신 거라면 `>`로 부호를 바꿔주세요.
         // -----------------------------------------------------------------
         if (event->disc.rssi < app_config->gate_way_rssi_th) {
-     //       return 0; // -55보다 큰 신호는 여기서 즉시 차단
+            return 0; // -55보다 큰 신호는 여기서 즉시 차단
         }
 
         // -----------------------------------------------------------------
@@ -257,12 +267,6 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
             // 이번 패킷에 이름은 없지만 기존 캐시 리스트에 저장된 이름이 있다면 가져옵니다.
             strcpy(current_packet_name, dev_list[idx].name);
         }
-
-        // ⚡️ 이름이 "Wave_Tracker"인지 검사
-        if (strcmp(current_packet_name, "Wave_Tracker") != 0) {
-            return 0; // Wave_Tracker가 아니면 즉시 차단
-        }
-
         // -----------------------------------------------------------------
         // 3. ⚡️ Service UUID 16-bit 검사 (0x1234 인지 확인)
         // -----------------------------------------------------------------
@@ -382,13 +386,56 @@ static int ble_svc_gatt_handler(uint16_t conn_handle, uint16_t attr_handle, stru
     case BLE_GATT_ACCESS_OP_WRITE_CHR: 
     { // 🟢 중괄호 추가로 switch-unreachable 변수선언 문제 해결
         uint16_t data_len = OS_MBUF_PKTLEN(ctxt->om);
-        
-        if (data_len > 0 && ble_rx_queue != NULL) {
-            ble_data_msg_t msg;
-            msg.len = (data_len > 128) ? 128 : data_len; 
+        int8_t rssi = 0;
+        // 현재 연결 핸들(conn_handle)의 RSSI를 조회합니다.
+
+        struct ble_gap_conn_desc desc;
+        uint8_t peer_mac[6] = {0};
+
+        if (ble_gap_conn_find(conn_handle, &desc) == 0) {
+            // desc.peer_id_addr.val 에 6바이트 MAC 주소가 들어있습니다.
+            memcpy(peer_mac, desc.peer_id_addr.val, 6);
             
-            ble_hs_mbuf_to_flat(ctxt->om, msg.data, msg.len, NULL);
-            xQueueSend(ble_rx_queue, &msg, 0);
+            // NimBLE의 MAC 주소 배열은 역순(Little-Endian)으로 들어올 수 있으므로
+            // 대문자 16진수 문자열로 출력하여 확인해봅니다.
+            ESP_LOGI("BLE_RX", "Connected Peer MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+                     peer_mac[5], peer_mac[4], peer_mac[3], 
+                     peer_mac[2], peer_mac[1], peer_mac[0]);
+        } else {
+            ESP_LOGW("BLE_RX", "Failed to find connection info for handle: %d", conn_handle);
+        }
+
+
+        int rc = ble_gap_conn_rssi(conn_handle, &rssi);
+        if (rc == 0) {
+            printf("BLE Write Received - Data Len: %d, RSSI: %d dBm\n", data_len, rssi);
+        } else {
+            printf("BLE Write Received - Data Len: %d, (Failed to get RSSI, rc=%d)\n", data_len, rc);
+        }     
+        if (data_len > 0 && ble_rx_queue != NULL) {
+            // 1. 구조체 변수를 스택에 임시 선언
+            ble_data_msg_t msg;
+
+            // 2. 실제 복사할 데이터 길이 계산 및 구조체 입력
+            msg.len = data_len; 
+            memcpy(msg.mac,peer_mac,sizeof(msg.mac));
+            // 3. ★ 매우 중요: 힙(Heap) 영역에 실제 데이터를 담을 공간 할당!
+            msg.data = (uint8_t *)malloc(msg.len);
+            if (msg.data == NULL) {
+                ESP_LOGE("BLE_RX", "Failed to allocate memory for RX data!");
+                return 0; // 메모리가 부족할 때 NimBLE에 에러 반환
+            }
+
+            // 4. mbuf 내부의 이진 데이터를 방금 할당한 플랫 버퍼(msg.data)로 복사
+            uint16_t copied_len = 0;
+            ble_hs_mbuf_to_flat(ctxt->om, msg.data, msg.len, &copied_len);
+
+            // 5. 큐로 구조체 메시지 송신 (구조체 내부의 '포인터 주소값'만 복사되어 전달됩니다)
+            if (xQueueSend(ble_rx_queue, &msg, 0) != pdPASS) {
+                ESP_LOGW("BLE_RX", "Queue full! Dropping packet and freeing memory.");
+                // 큐가 꽉 차서 전송에 실패했다면, 메모리가 공중에 붕 뜨지 않게 여기서 즉시 해제해 주어야 합니다!
+                free(msg.data); 
+            }
         }
         break;
     } // 🟢 블록 마감
@@ -456,8 +503,40 @@ void ble_server_send_notify(uint16_t conn_handle, uint8_t *data, uint16_t len)
     struct os_mbuf *om;
     om = ble_hs_mbuf_from_flat(data, len);
     if (om != NULL) {
-        ble_gatts_notify_custom(conn_handle, ble_spp_svc_gatt_notify_val_handle, om);
+        esp_err_t err = ble_gatts_notify_custom(conn_handle, ble_spp_svc_gatt_notify_val_handle, om);
+
+            if (err != ESP_OK) {
+                // [4] 에러 분기 처리
+                switch (err) {
+                    case ESP_ERR_INVALID_STATE:
+                        // 주로 상대방 기기(스마트폰 등)가 Notification을 On(구독)하지 않았을 때 발생
+                        ESP_LOGW(TAG, "Notify failed: Client has not enabled notifications (CCCD not registered).");
+                        break;
+
+                    case ESP_ERR_NO_MEM:
+                        // BLE 링버퍼나 패킷 큐가 가득 찼을 때 (너무 빠르게 연속으로 보낼 때 발생)
+                        ESP_LOGE(TAG, "Notify failed: Out of memory / BLE TX Buffer Congested! Slow down the transfer rate.");
+                        // 팁: 여기서 조금 대기(vTaskDelay)했다가 재시도(Retry)하는 로직을 추가할 수도 있습니다.
+                        break;
+
+                    case ESP_ERR_INVALID_ARG:
+                        ESP_LOGE(TAG, "Notify failed: Invalid parameter (check handle or data length).");
+                        break;
+
+                    default:
+                        // 정의되지 않은 기타 시스템 에러
+                        ESP_LOGE(TAG, "Notify failed with system error code: 0x%X (%s)", err, esp_err_to_name(err));
+                        break;
+                }
+                return;
+            }
+
+            // 성공 시 가볍게 디버깅 로그 (필요할 때만 켭니다)
+            ESP_LOGD(TAG, "Notification sent successfully. Len: %d", len);
+            //return ESP_OK;
+            return;
     }
+    ESP_LOGD(TAG, "om is NULL");
 }
 /**
  * @brief 스마트폰으로 보낼 데이터를 BLE 송신 큐에 집어넣는 함수
@@ -478,26 +557,29 @@ bool ble_send_data_to_queue(const uint8_t *data, uint16_t len)
         return false;
     }
 
-    ble_data_msg_t my_packet;
+    ble_data_msg_t msg;
 
-    // 3. 방어 코드: 구조체 배열 크기(128바이트)를 넘지 않도록 길이 제한
-    if (len > 128) {
-        my_packet.len = 128;
-        printf("[BLE TX FUNC] 경고: 데이터 크기가 128바이트를 초과하여 잘라냅니다.\n");
-    } else {
-        my_packet.len = len;
+    // 3. 방어 코드: 구조체 배열 크기(512바이트)를 넘지 않도록 길이 제한
+    msg.len = len;
+    
+
+    // 3. ★ 매우 중요: 힙(Heap) 영역에 실제 데이터를 담을 공간 할당!
+    msg.data = (uint8_t *)malloc(msg.len);
+    if (msg.data == NULL) {
+        ESP_LOGE("BLE_RX", "Failed to allocate memory for RX data!");
+        return false; // 메모리가 부족할 때 NimBLE에 에러 반환
     }
-
     // 4. 데이터 실제 복사
-    memcpy(my_packet.data, data, my_packet.len);
+    memcpy(msg.data, data, msg.len);
 
     // 5. 큐로 전송 (포트 대기 시간은 0으로 설정하여 현재 태스크가 멈추지 않게 함)
-    if (xQueueSend(ble_tx_queue, &my_packet, 0) == pdTRUE) {
-        return true;
-    } else {
-        printf("[BLE TX FUNC] 에러: 송신 큐가 가득 차서 데이터를 넣지 못했습니다.\n");
+    if (xQueueSend(ble_tx_queue, &msg, 0) != pdTRUE) {
+        ESP_LOGW("BLE_RX", "Queue full! Dropping packet and freeing memory.");
+        // 큐가 꽉 차서 전송에 실패했다면, 메모리가 공중에 붕 뜨지 않게 여기서 즉시 해제해 주어야 합니다!
+        free(msg.data); 
         return false;
     }
+    return true;
 }
 static void ble_rx_processing_task(void *pvParameters)
 {
@@ -506,8 +588,8 @@ static void ble_rx_processing_task(void *pvParameters)
 
     while (1) {
         if (xQueueReceive(ble_rx_queue, &msg, portMAX_DELAY) == pdTRUE) {
-
-            BLE_Receive_data(msg.data, msg.len);
+            BLE_Receive_data(msg.mac, msg.data, msg.len);
+            free(msg.data);   
         }
     }
 }
@@ -520,25 +602,52 @@ static void ble_tx_processing_task(void *pvParameters)
         // 내가 폰으로 보낼 데이터가 큐에 들어올 때까지 대기
         if (xQueueReceive(ble_tx_queue, &msg, portMAX_DELAY) == pdTRUE) {
             if (is_phone_connected && current_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-                ble_server_send_notify(current_conn_handle, msg.data, msg.len);
+
+                uint16_t offset = 0;
+                while (offset < msg.len) { // MTU 길이만큼 데이터를 나눠서 보낸다.
+                    // 이번 턴에 보낼 길이: 남은 길이와 MTU 최대치 중 작은 값
+                    uint16_t send_len = (msg.len - offset > g_ble_max_payload) ? g_ble_max_payload : (msg.len - offset);
+                    
+                    // msg.data의 offset 위치부터 send_len 만큼 잘라서 쏘기
+                    ble_server_send_notify(current_conn_handle, &msg.data[offset], send_len);
+                    printf("[TX 태스크] %d 바이트 중 %d 바이트 쪼개서 전송 완료 (offset: %d)\n", msg.len, send_len, offset);
+                    
+                    offset += send_len;
+                    
+                    // 연속 전송 시 BLE 컨트롤러 큐 오버플로우 방지 (필수)
+                    vTaskDelay(pdMS_TO_TICKS(15));
+                }
                 printf("[TX 태스크] 스마트폰으로 %d 바이트 Notify 전송 완료\n", msg.len);
             } else {
                 printf("[TX 태스크] 경고: 스마트폰이 연결되어 있지 않아 전송 취소\n");
             }
+            free(msg.data);   
         }
     }
 }
+
+
 
 static void mac_send_timer_callback(void* arg)
 {
     esp_timer_stop(Mac_sending_timer);
     uint8_t mac[6];
-    uint8_t Str[40];
+    //uint8_t Str[40];
+    char Str[150];
     esp_read_mac(mac,ESP_MAC_WIFI_STA);
-    sprintf((char*)Str, "Wifi MAC %02X%02X%02X%02X%02X%02X", 
-    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    // sprintf((char*)Str, "Wifi MAC %02X%02X%02X%02X%02X%02X", 
+    // mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    // [by.jeon] ble 연결 직후 meta 데이터를 보내야 한다.
+    snprintf(Str, sizeof(Str), 
+             "{\"event_type\":\"meta\",\"data\":{\"serial\":\"%s-%02X%02X%02X%02X%02X%02X\",\"model\":\"%s\",\"hw_rev\":\"%s\",\"fw\":\"%s\"}}", 
+             CONFIG_DEVICE_PREFIX,                               // W100
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],     // MAC Address
+             CONFIG_DEVICE_TYPE,                                 // w100
+             CONFIG_HW_REV,                                      // r1.0
+             CONFIG_FW_VERSION);                                 // v1.0.0
+    printf("send %s ", Str);
     ble_send_data_to_queue((const uint8_t*)Str, strlen((const char*)Str));
-    
 }
 
 void motion_msg_send(uint8_t cmd,uint8_t sub_cmd)
@@ -553,6 +662,10 @@ void motion_msg_send(uint8_t cmd,uint8_t sub_cmd)
             Motion_Packet.event_code = cmd;
             Motion_Packet.motion_res.req_type = sub_cmd;
         break;
+        case HEALTH_DATA_REQUEST:
+            Motion_Packet.event_code = cmd;
+            Motion_Packet.health_data_req.req_type = sub_cmd;
+        break;    
         case MOTION_DATA_ACK:
             Motion_Packet.event_code = cmd;
             Motion_Packet.motion_ack.ack_seq_no = sub_cmd;
@@ -560,7 +673,8 @@ void motion_msg_send(uint8_t cmd,uint8_t sub_cmd)
         case OTA_MODE_REQUEST:
             Motion_Packet.event_code = cmd;
             Motion_Packet.ota_req.cmd_type = sub_cmd;
-        break;    
+        break;   
+
         default : 
         return;            
     }
@@ -570,7 +684,7 @@ void motion_msg_send(uint8_t cmd,uint8_t sub_cmd)
     ble_send_data_to_queue((uint8_t*)&Motion_Packet,sizeof(Motion_Packet));
     // 설정값이 0보다 클 때만 타이머 실행 (안전성 강화)
 }
-
+#include "esp_bt.h" // 필요한 헤더 포함
 void ble_task_init(void)
 {
     esp_err_t ret;
@@ -588,7 +702,13 @@ void ble_task_init(void)
     ble_hs_cfg.sync_cb = ble_spp_server_on_sync;
     ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-
+    esp_err_t err = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P15);
+    
+    if (err == ESP_OK) {
+        printf("BLE TX Power set successfully!\n");
+    } else {
+        printf("Failed to set BLE TX Power: %d\n", err);
+    }
     #ifndef CONFIG_EXAMPLE_IO_TYPE
     #define CONFIG_EXAMPLE_IO_TYPE 3 
     #endif
@@ -600,13 +720,13 @@ void ble_task_init(void)
     ble_store_config_init();
 
 
-    const esp_timer_create_args_t pairing_timer_args = {
+    const esp_timer_create_args_t mac_sending_timer_args = {
         .callback = &mac_send_timer_callback,
         .name = "mac_sending_timer"
     };
+    ESP_ERROR_CHECK(esp_timer_create(&mac_sending_timer_args, &Mac_sending_timer));
 
-    // 타이머 생성
-    ESP_ERROR_CHECK(esp_timer_create(&pairing_timer_args, &Mac_sending_timer));
+
     ble_rx_queue = xQueueCreate(10, sizeof(ble_data_msg_t));
     ble_tx_queue = xQueueCreate(10, sizeof(ble_data_msg_t));
 
@@ -614,7 +734,7 @@ void ble_task_init(void)
     if (xTaskCreatePinnedToCore(
             ble_rx_processing_task,                  // 태스크 함수
             "ble_rx_task",                // 태스크 이름
-            4096,       // 스택 크기
+            BLE_TRX_TASK_STACK_SIZE,       // 스택 크기
             NULL,        // 파라미터
             tskIDLE_PRIORITY + 3,      // 우선순위
             NULL,                  // 태스크 핸들
@@ -626,7 +746,7 @@ void ble_task_init(void)
     if (xTaskCreatePinnedToCore(
             ble_tx_processing_task,                  // 태스크 함수
             "ble_tx_task",                // 태스크 이름
-            4096,       // 스택 크기
+            BLE_TRX_TASK_STACK_SIZE,       // 스택 크기
             NULL,        // 파라미터
             tskIDLE_PRIORITY + 3,      // 우선순위
             NULL,                  // 태스크 핸들

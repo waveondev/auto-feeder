@@ -79,9 +79,9 @@ BaseType_t prvDebugformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
                 DBG_Resister.DBG_EN = atoi(ag[2]) ? 1 : 0;
             }
-			else if (!strncmp(ag[1], "moter", 5))
+			else if (!strncmp(ag[1], "motor", 5))
 			{
-                DBG_Resister.moter = atoi(ag[2]) ? 1 : 0;
+                DBG_Resister.motor = atoi(ag[2]) ? 1 : 0;
             }
 			else if (!strncmp(ag[1], "tof", 3))
 			{
@@ -114,10 +114,12 @@ BaseType_t prvDebugformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			else if (!strncmp(ag[1], "nvs", 3))
 			{
 				dump_all_configurations();
+				print_all_nvs_keys();
             }			
 			else if (!strncmp(ag[1], "tracker", 7))
 			{
 				dump_tracker_all_devices();
+
 			}
 					
 			/* There are more parameters to return after this one. */

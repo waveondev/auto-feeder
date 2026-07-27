@@ -21,7 +21,7 @@ typedef struct{
     uint32_t Enable;
     uint32_t Water_intake;
 }Tracker_Device_t;
-
+#define TRACKER_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 #define TRACKER_DEVICE_MAX 20
 Tracker_Device_t* Tracker_Device[TRACKER_DEVICE_MAX];
 Tracker_Device_t Tracker_UNKNOWN = 
@@ -37,11 +37,15 @@ void dump_tracker_device_info(const char* label, const Tracker_Device_t* dev)
         return;
     }
     
-    printf("%s:\n", label);
-    printf("  - Device_ID    : %s\n", dev->Device_ID);
-    printf("  - Device_Time  : %ld\n", dev->Device_Time);
-    printf("  - Disable_Time : %ld\n", dev->Disable_Time);
-    printf("  - Enable       : %ld (%s)\n", dev->Enable, dev->Enable ? "TRUE" : "FALSE");
+    printf("%s\n", label);
+    printf("  ├─ Device ID    : %s\n", dev->Device_ID[0] != '\0' ? dev->Device_ID : "(None)");
+    printf("  ├─ Enable State : %s (%ld)\n", dev->Enable ? "ENABLED" : "DISABLED", dev->Enable);
+    printf("  ├─ Time Stats   : Total[%ld s] | Active[%ld s] | Disable[%ld s] | Diff[%ld s]\n", 
+           dev->total_Device_Time, 
+           dev->Device_Time, 
+           dev->Disable_Time, 
+           dev->diff_Time);
+    printf("  └─ Water Intake : %ld mL\n", dev->Water_intake);
 }
 
 // 2. 전체 Tracker_Device 배열 및 UNKNOWN 객체를 덤프하는 함수
@@ -137,7 +141,7 @@ bool Tracker_device_time_add(int i)
         if (Tracker_Device[i]->Enable) {
 
             Tracker_Device[i]->Device_Time += 100;
-            printf("[%s] total time %ld \n", Tracker_Device[i]->Device_ID, Tracker_Device[i]->Device_Time);
+            //printf("[%s] total time %ld \n", Tracker_Device[i]->Device_ID, Tracker_Device[i]->Device_Time);
             ret = true;
         }
     }
@@ -209,7 +213,19 @@ void MotionSetTimer(bool status)
         Motion_Send_tick = 50;
     }
 }
-
+bool GetTracker_Id_active(void)
+{
+    for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
+        if(Tracker_Device[i] != NULL)
+        {
+            if(Tracker_Device[i]->Enable)
+            {
+                return true;
+            }
+        }
+    }   
+    return false;
+}
 /**
  * @brief 100ms 주기로 실행될 Tracker Capture 태스크 함수
  */
@@ -231,7 +247,6 @@ void vTrackerCaptureTask(void *pvParameters)
         /* 예: 센서 데이터 읽기, Tracker 상태 업데이트 등                  */
         /*-----------------------------------------------------------------*/
         // printf("[캡처] 데이터를 캡처하는 중...\n"); 
-
         if(Motion_Send_enable)
         {
             Motion_Send_tick--;
@@ -241,7 +256,6 @@ void vTrackerCaptureTask(void *pvParameters)
                 motion_msg_send(MOTION_START_REQUEST,1);
             }
         }
-        #if 1
         for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
             if(Time_ratio_state() == SMART_RUN_STABLE)
             {      
@@ -252,15 +266,16 @@ void vTrackerCaptureTask(void *pvParameters)
                 if(Tracker_Device[i]->Enable)
                 {
                     Tracker_Device[i]->Disable_Time += 100;
-                    if(Tracker_Device[i]->Disable_Time >= 2000)
+                    if(Tracker_Device[i]->Disable_Time >= 5000)
                     {
                         Tracker_Device_disable(i);
                     }  
                 }
             }
+
         }   
 
-                    #endif
+        
         // 💡 vTaskDelayUntil은 이전 깨어난 시간 기준으로 정확히 100ms 뒤에 깨어나도록 보장합니다.
         // (vTaskDelay보다 주기성을 유지하는 데 훨씬 유리합니다)
         vTaskDelayUntil(&xLastWakeTime, xDelay);
@@ -275,7 +290,7 @@ void Create_Tracker_Capture_Task(void)
     if (xTaskCreatePinnedToCore(
             vTrackerCaptureTask,                  // 태스크 함수
             "tracker_capture",                // 태스크 이름
-            2048,       // 스택 크기
+            TRACKER_TASK_STACK_SIZE,       // 스택 크기
             NULL,        // 파라미터
             tskIDLE_PRIORITY + 1,      // 우선순위
             NULL,                  // 태스크 핸들

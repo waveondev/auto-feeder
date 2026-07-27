@@ -3,7 +3,6 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/timers.h"
-#include "esp_timer.h"
 #include "gpio_util.h"
 #include "esp_log.h"
 #include "app_config_flash.h"
@@ -12,8 +11,9 @@
 #include "opmode_task.h"
 #include "wifi_task.h"
 #include "ble_task.h"
+#include "app_led.h"
 static const char *TAG = "BUTTON_CTRL";
-#define BUTTON_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 3)
+#define BUTTON_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 
 // 설정 타임아웃 (밀리초)
 #define DEBOUNCE_TIME_MS      50
@@ -59,7 +59,9 @@ void bf_SingleClickAction(void) {
 void bf_DoubleClickAction(void) {
     app_config_t* app_config = get_app_config();
     ESP_LOGI(TAG,"Double Click Action executed\r\n");
+    led_bit_enable(CLEAN_MODE_BIT); 
     start_motor_with_boost(100, app_config->pump_clean_duration);
+
 }
 
 void bf_LongPress3SecAction(void) {
@@ -70,6 +72,7 @@ void bf_LongPress3SecAction(void) {
 void bf_LongPress5SecAction(void) {
     ESP_LOGI(TAG,"Long Press 5 Sec Action executed \r\n");
     Wifi_Disconnect();
+     wifi_scan_start();
 }
 
 void bf_LongPress10SecAction(void) {

@@ -29,8 +29,6 @@
 #include "esp_wifi.h"
 #endif
 #include "http_ota.h"
-#include "mqtt_main.h"
-#include "mqtt_parse.h"
 #include "app_led.h"
 TaskHandle_t xOTA_Handle = NULL;
 static uint8_t OTA_Enable = 0;
@@ -104,6 +102,7 @@ void simple_ota_example_task(void *pvParameter)
     esp_netif_get_netif_impl_name(netif, ifr.ifr_name);
     ESP_LOGI(TAG, "Bind interface name is %s", ifr.ifr_name);
 #endif
+#if 1
     esp_http_client_config_t config = {
         .url = pvParameter,
 #ifdef CONFIG_EXAMPLE_USE_CERT_BUNDLE
@@ -117,6 +116,24 @@ void simple_ota_example_task(void *pvParameter)
         .if_name = &ifr,
 #endif
     };
+#else
+    esp_http_client_config_t config = {
+        .url = pvParameter,
+    #ifdef CONFIG_EXAMPLE_USE_CERT_BUNDLE
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    #else
+        .cert_pem = (char *)server_cert_pem_start,
+    #endif
+        .event_handler = _http_event_handler,
+        .keep_alive_enable = true,
+
+        // ⭐️ 이전엔 없었더라도, S3 변화에 대응하기 위해 반드시 추가해야 하는 값
+        .timeout_ms = 15000,   // 타임아웃 15초로 확대
+        .buffer_size = 4096,   // 수신 버퍼 4KB로 확대 (TLS 패킷 잘림 방지)
+    };
+#endif
+
+   
 
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL_FROM_STDIN
     char url_buf[OTA_URL_SIZE];
@@ -144,12 +161,8 @@ void simple_ota_example_task(void *pvParameter)
     esp_err_t ret = esp_https_ota(&ota_config);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "OTA Succeed, Rebooting...");
-        state = CHARGE_FW_SUCCESS;
-        //MQTT_Send(0,0,NULL,CHARGE_FW_UPDATE_STATE,&state,1);
     } else {
         ESP_LOGE(TAG, "Firmware upgrade failed");
-        state = CHARGE_FW_FAIL;
-        //MQTT_Send(0,0,NULL,CHARGE_FW_UPDATE_STATE,&state,1);
         OTA_Enable = 0;
         led_bit_disable(OTA_START_BIT);
         vTaskDelete(xOTA_Handle);

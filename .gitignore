@@ -51,3 +51,6 @@ Thumbe.db
 
 # 9. Compiled Object Files (컴파일된 목적 파일)
 *.obj
+dependencies.lock
+c_cpp_properties.json
+settings.json
