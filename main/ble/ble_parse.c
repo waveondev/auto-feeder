@@ -433,13 +433,12 @@ void Motion_Timer_Set(bool state)
     if(state == true)
         esp_timer_start_once(Motion_Timeout_timer, 5000000);
 }
-
+static pack_data* data_buffer;
 void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
 {
     Motion_Packet_t* Motion_Packet = (Motion_Packet_t*)data;
     
     printf("[BLE_Receive_data] %d 바이트 데이터 처리 중: ", len);
-
     for(int i = 0; i < len; i++)
     {
         printf("%02X ", data[i]);
@@ -450,21 +449,52 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
     {   
         case MOTION_START_RESPONSE:
             printf("interval = %d Len = %d",Motion_Packet->motion_req.interval, Motion_Packet->motion_req.total_points);                    
-            if(Motion_Packet->motion_req.total_points != 0)
-            {
-                    total_count = Motion_Packet->motion_req.total_points + (9-(Motion_Packet->motion_req.total_points%9));
-                    input_count = 0;
-                    Motion_Timer_Set(true);
-                    tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet);
-            }
             printf("\n================ [ MOTION_START_RESPONSE ] ================\n");
             printf(" interval   : %d\n", Motion_Packet->motion_req.interval);
             printf(" total_points   : %d 개 \n",  Motion_Packet->motion_req.total_points);
             printf("\n=====================================================\n\n");
+                        
+            if(Motion_Packet->motion_req.total_points != 0)
+            {
+                    total_count = Motion_Packet->motion_req.total_points;
+                    input_count = 0;
+                    data_buffer = (pack_data*)calloc(total_count,sizeof(pack_data));
+                    if(data_buffer == NULL)
+                        break;
+                    
+                    Motion_Timer_Set(true);
+                    tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,0,NULL);
+            }
+
         break;
         case MOTION_DATA:
+            if(data_buffer == NULL)
+                break;
+            // 각 멤버의 주소를 배열로 묶어줍니다.
+            pack_data* input_ptrs[] = {
+                &Motion_Packet->motion_data.pack_data_0,
+                &Motion_Packet->motion_data.pack_data_1,
+                &Motion_Packet->motion_data.pack_data_2,
+                &Motion_Packet->motion_data.pack_data_3,
+                &Motion_Packet->motion_data.pack_data_4,
+                &Motion_Packet->motion_data.pack_data_5,
+                &Motion_Packet->motion_data.pack_data_6,
+                &Motion_Packet->motion_data.pack_data_7,
+                &Motion_Packet->motion_data.pack_data_8
+            };
 
-            input_count += 9;
+            for (int i = 0; i < 9; i++) {
+                if (input_count < total_count) { 
+                        memcpy(&data_buffer[input_count], input_ptrs[i], sizeof(pack_data));
+                        input_count++;
+                } else {
+                    // total_count를 초과하는 예외 데이터 처리 (경고 로그)
+                    printf("Warning: Buffer full! input_count(%ld) >= total_count(%ld)\n", input_count, total_count);
+                    break;
+                }
+            }
+
+            //memcpy(&data_buffer[0], &Motion_Packet->motion_data.pack_data_0, sizeof(pack_data));
             printf("seq = %d\n", Motion_Packet->motion_data.seq);
 
             printf("data0: type=%d, data=%d (word=%d)\n", Motion_Packet->motion_data.pack_data_0.bit.type, Motion_Packet->motion_data.pack_data_0.bit.data, Motion_Packet->motion_data.pack_data_0.word);
@@ -476,10 +506,16 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
             printf("data6: type=%d, data=%d (word=%d)\n", Motion_Packet->motion_data.pack_data_6.bit.type, Motion_Packet->motion_data.pack_data_6.bit.data, Motion_Packet->motion_data.pack_data_6.word);
             printf("data7: type=%d, data=%d (word=%d)\n", Motion_Packet->motion_data.pack_data_7.bit.type, Motion_Packet->motion_data.pack_data_7.bit.data, Motion_Packet->motion_data.pack_data_7.word);
             printf("data8: type=%d, data=%d (word=%d)\n", Motion_Packet->motion_data.pack_data_8.bit.type, Motion_Packet->motion_data.pack_data_8.bit.data, Motion_Packet->motion_data.pack_data_8.word);
-            tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet);
-            if(input_count == total_count)
+            
+            
+            if(input_count >= total_count)
             {
-                motion_msg_send(MOTION_DATA_ACK,Motion_Packet->motion_data.seq);
+                Motion_Timer_Set(false);
+                tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,total_count,data_buffer);
+                data_buffer = NULL;
+                input_count = 0;
+                total_count = 0;                
+               // motion_msg_send(MOTION_DATA_ACK,Motion_Packet->motion_data.seq);
             }
             else
                 Motion_Timer_Set(true);
@@ -515,7 +551,7 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                 printf("  |- Reset Reason: %u\n", Motion_Packet->health_data_res.fault_flag.bit.reset_reason);
                 
                 printf("\n=====================================================\n\n");
-                tracker_mqtt_queue_send(TRACKER_MESSEGE_HEALTH,mac, Motion_Packet);
+                tracker_mqtt_queue_send(TRACKER_MESSEGE_HEALTH,mac, Motion_Packet,0,NULL);
         break;
         default:
             BLE_APP_Command(data,len);

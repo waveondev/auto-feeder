@@ -33,38 +33,39 @@ static void Health_timer_callback(void* arg)
 bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd)
 {
     if(mqtt_tx_queue == NULL)
-        return false;
-
+    {
+        ESP_LOGW("mqtt_tx", "mqtt_tx_queue NULL.");
+        return false;        
+    }
+    ESP_LOGW("mqtt_tx", "mqtt_tx_queue send.");
     if (xQueueSend(mqtt_tx_queue, &cmd, 0) != pdPASS) {
         ESP_LOGW("mqtt_tx", "Queue full! Dropping packet and freeing memory.");
         return false;
     }
     return true;
 }
-
-void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet)
+void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  pack_data* data )
 {
     tracker_mqtt_packet_t mqtt_packet;
 
     if(tracker_mqtt_queue == NULL)
-        return;
+    {
+        ESP_LOGW("mqtt_tx", "tracker_mqtt_queue NULL.");
+        return;        
+    }
+
 
     memset(&mqtt_packet,0,sizeof(tracker_mqtt_packet_t));
     mqtt_packet.cmd = cmd;
     memcpy(mqtt_packet.mac,mac,sizeof(mqtt_packet.mac));
     memcpy(&mqtt_packet.packet,packet,sizeof(Motion_Packet_t));
-
-        
+    mqtt_packet.data_len = data_len;
+    mqtt_packet.data = data;
+    ESP_LOGW("mqtt_tx", "tracker_mqtt_queue send.");
     if (xQueueSend(tracker_mqtt_queue, &mqtt_packet, 0) != pdPASS) {
         ESP_LOGW("mqtt_tx", "Queue full! Dropping packet and freeing memory.");
     }
 }
-
-static void aws_loop(void)
-{
-
-}
-
 
 static void aws_iot_main_entry(void *pvParameters)
 {
@@ -125,6 +126,11 @@ static void aws_iot_main_entry(void *pvParameters)
             }
             if (xQueueReceive(tracker_mqtt_queue, &mqtt_packet, pdMS_TO_TICKS(10)) == pdTRUE) {
                 Send_cJSON_Messege_for_tracker(&mqtt_packet);
+            // ⭕ 훌륭함: 메시지 전송 처리 완료 후 동적 메모리 안전하게 해제
+                if (mqtt_packet.data != NULL) {
+                    free(mqtt_packet.data);
+                    mqtt_packet.data = NULL; // Dangling Pointer 방지를 위해 NULL 처리 권장
+                }
             }
 
             /* 수신 및 네트워크 연결 감시 */

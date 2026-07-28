@@ -338,14 +338,10 @@ static cJSON* Get_cJSON_Data_for_Tracker(messege_tx_mqtt_cmd_e cmd, tracker_mqtt
             // 4. points 배열 추가 (uint16_t 그대로 추가, 비트 언패킹은 백엔드가 수행)
             cJSON *points_array = cJSON_CreateArray();
 // pack_data 포인터를 배열처럼 접근하기 위해 uint16_t 포인터로 캐스팅
-            points = (const uint16_t *)&tracker_mqtt_packet->packet.motion_data.pack_data_0;
-            
-            // 1개의 motion_data 패킷에 들어있는 포인트 수 (최대 9개)
-            // total_points가 9보다 작으면 total_points 만큼만, 크면 9개만 반복
-            int current_pkt_points = (motion_res.motion_req.total_points < 9) ? 
-                                     motion_res.motion_req.total_points : 9;
+            points = (const uint16_t *)tracker_mqtt_packet->data;
 
-            for (int i = 0; i < current_pkt_points; i++) {
+
+            for (int i = 0; i < tracker_mqtt_packet->data_len; i++) {
                 cJSON_AddItemToArray(points_array, cJSON_CreateNumber(points[i]));
             }
             cJSON_AddItemToObject(data_obj, "points", points_array);

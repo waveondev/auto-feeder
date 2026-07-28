@@ -7,5 +7,5 @@
  */
 void aws_iot_task_init(void);
 bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd);
-void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet);
+void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  pack_data* data );
 #endif /* __AWS_IOT_TASK_H__ */

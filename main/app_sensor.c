@@ -12,7 +12,7 @@
 #include "app_TOF.h"
 #include "app_adc.h"
 #include "app_led.h"
-
+#include "gpio_util.h"
 #define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 #define TASK_DELAY_MS(x) (x/portTICK_PERIOD_MS)
 static const char *TAG = __FILE__;
@@ -28,15 +28,7 @@ void Sensor_task(void *pvParameter)
     bool ret = true; 
     int error_count = 0 ;
     adc_init();
-    ret = HX711_init();
-    #if 1
-    if(ret == false)
-    {
-        ESP_LOGE(TAG, "HX711 Error\r\n");
-        //return ret;
-        led_bit_enable(SENSE_ERR_BIT);
-    }
-    #endif
+
     ret = TOF_VL53L0X_init();
     #if 1
     if(ret == false)
@@ -46,15 +38,31 @@ void Sensor_task(void *pvParameter)
        led_bit_enable(SENSE_ERR_BIT);
     }
     #endif
+
+// 3개 핀 비트마스크 구성 (1ULL << 핀번호)
+    uint64_t pin_mask = (1ULL << SLIDING_A_SEN) | 
+                        (1ULL << SLIDING_B_SEN) | 
+                        (1ULL << FEED_SEN)| 
+                        (1ULL << IR_OUT0);
+
+    gpio_config_t io_conf = {                   
+        .pin_bit_mask = pin_mask,             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_INPUT,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+    gpio_config(&io_conf);
+
+
+
     while (1) {
-       // if(loadcell_data_get() >)
         ADC_Sensing();
-       // vTaskDelay(300 / portTICK_PERIOD_MS);
         #if 1
-        HX711_Sensing();
         #endif
-        vTaskDelay(150 / portTICK_PERIOD_MS);
         VL53L0X_Sensing();
+        //ESP_LOGI(TAG, "gpio_set_level(IR) = %d\r\n",gpio_get_level(IR_OUT0));
+        vTaskDelay(30 / portTICK_PERIOD_MS);
     }
     
 }
@@ -63,7 +71,18 @@ bool sensor_init(void)
 {
     static uint8_t ucParameterToPass;
     TaskHandle_t xHandle = NULL;
+        gpio_config_t io_conf = {                   
+        .pin_bit_mask = (1ULL << IR_ONOFF0),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_ENABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+    gpio_config(&io_conf);
 
+    gpio_set_level(IR_ONOFF0, 1);   
+
+    HX711_task_init();
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(
             Sensor_task,                  // 태스크 함수

@@ -14,7 +14,7 @@ typedef enum {
 } LED_States;
 #define BLINK_GPIO   38   // 네오픽셀 데이터 선이 연결된 GPIO 핀 번호
 
-#define PIN_PUMP_PWM  15
+
 #ifndef PIN_HX711_DOUT
   #define PIN_HX711_DOUT 40
 #endif
@@ -46,8 +46,15 @@ typedef enum {
 #define FEED_PWM_IN    16
 #define ACUUM_PWM_IN   2
 
-#define SLIDING_PWM_CW 17
+#define SLIDING_PWM_CW  17
 #define FEED_PWM_CW     18
+
+#define SLIDING_A_SEN  45
+#define SLIDING_B_SEN  20
+#define FEED_SEN  19
+
+#define IR_ONOFF0 21
+#define IR_OUT0  4
 
 
 

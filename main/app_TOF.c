@@ -22,9 +22,7 @@ static const char *TAG = __FILE__;
 static VL53L0X_Dev_t dev_tof0;
 
 static bool g_tof0_ok = false;
-static uint32_t g_tof0_last_ok_ms = 0;
 static uint16_t tof0_mm;
-uint32_t ts_tof0_ms = 0;
 
 #define FILTER_SIZE 10
 static uint32_t TOF_Buf_L[FILTER_SIZE] = {0};
@@ -142,8 +140,6 @@ void VL53L0X_Sensing(void)
         VL53L0X_Error err0 = VL53L0X_PerformSingleRangingMeasurement(&dev_tof0, &measure_data0);
         if (err0 == VL53L0X_ERROR_NONE && measure_data0.RangeStatus == 0) {
             tof0_mm = measure_data0.RangeMilliMeter; // 아크릴 노이즈가 제거된 깨끗한 실제 거리
-            ts_tof0_ms = now_ms;
-            g_tof0_last_ok_ms = now_ms;
         } else if (measure_data0.RangeStatus == 2 || measure_data0.RangeStatus == 4) {
             // 허공이거나 너무 멀어서 측정이 안 된 경우 -> 장애물이 없다는 뜻!
             tof0_mm = 8190; // VL53L0X의 최대 에러 값(Out of Range) 대입 또는 무시

@@ -433,9 +433,16 @@ static void HX711_cal_process(void)
     app_config_t* app_config = get_app_config();
 
     int32_t cal_data = 0;
-
-    while(hx711_read_average(&dev, 100, &cal_data) != ESP_OK){}
-    app_config->case_raw_data = cal_data;
+    int32_t cal_data_buf = 0;
+    for(int i=0;i<10;i++)
+    {
+        if(hx711_read_average(&dev, 10, &cal_data) == ESP_OK)
+        {
+            cal_data_buf+= cal_data;
+        }
+    }
+   
+    app_config->case_raw_data = cal_data_buf/10;
     app_nvs_save_set();
     ESP_LOGI(TAG, "Tare offset set to %d\r\n", app_config->hx1_offset);
 }
@@ -476,53 +483,61 @@ void HX711_Sensing(void)
     {
             ESP_LOGI(TAG, "hx711_data: (%d)",hx711_data_buf);
     }
-    int case_weight = 0;
-    float safe_min_threshold = (float)app_config->min_weight_threshold; 
+
+
 
     if(DBG_Resister->HX711)
     {
         ESP_LOGI(TAG, " Raw: %.2f g", loadcell_data_get());
     }
 
-    if(loadcell_data_get() < 0)//물그릇 탐지
-    {
-        if(!led_bit_status(HARDWARE_ERR_BIT))
-        {
-            led_bit_enable(HARDWARE_ERR_BIT);
-            water_fault_enable(WATER_BOWL_DETACHED_FAULT);
-        }
-    }
-    else
-    {
-        // 💡 이제 안전한 로컬 변수끼리만 비교합니다.
-        if (loadcell_data_get() < safe_min_threshold) // 물부족
-        {
-            if(!led_bit_status(HARDWARE_ERR_BIT))
-            {
-                led_bit_enable(HARDWARE_ERR_BIT);
-                water_fault_enable(WATER_LOW_FAULT);
-                
-            }       
-        }       
-    }
+}
+#define HX711_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 
-    // 💡 3. 에러 해제 조건식도 안전한 로컬 변수로 교체합니다.
-    // 흔들림 방지(히스테리시스)를 위해 임계값(200)보다 1g 큰 safe_min_threshold + 1.0f(즉, 201.0f)로 대칭을 맞춥니다.
-    float safe_release_threshold = safe_min_threshold + 10.0f; 
 
-    if(hardware_error_enable() && loadcell_data_get() > safe_release_threshold && loadcell_data_get() > 0)
+
+static void HX711_task(void *pvParameter)
+{
+    ESP_LOGI(TAG, "Starting sensor task");
+    
+    //ESP_LOGE(TAG, "HX711 Error %d \r\n", hx711_init(&dev));
+    #if 1
+    if(hx711_init(&dev) != ESP_OK)
     {
-        led_bit_disable(HARDWARE_ERR_BIT);
-        water_fault_disable(WATER_LOW_FAULT);
-        water_fault_disable(WATER_BOWL_DETACHED_FAULT);
+        ESP_LOGE(TAG, "HX711 Error\r\n");
+        led_bit_enable(SENSE_ERR_BIT);
     }
+    #endif
+
+    while (1) {
+
+        HX711_Sensing();
+
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+    
 }
 
 
-bool HX711_init(void)
+bool HX711_task_init(void)
 {
 
-    hx711_init(&dev);
+    static uint8_t ucParameterToPass;
+    TaskHandle_t xHandle = NULL;
+
+    // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
+    if (xTaskCreatePinnedToCore(
+            HX711_task,                  // 태스크 함수
+            "HX711_task",                // 태스크 이름
+            HX711_TASK_STACK_SIZE,       // 스택 크기
+            &ucParameterToPass,        // 파라미터
+            tskIDLE_PRIORITY + 1,      // 우선순위
+            &xHandle,                  // 태스크 핸들
+            1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
+        ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
+        ESP_LOGE(TAG, "Error creating Sensor_task on Core 1");
+    }
+
     return true;
 }
 #endif

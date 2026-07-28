@@ -308,10 +308,6 @@ static void LED_task(void *pvParameter)
                 else if (led_status_resister & TOF_DETECT_BIT){
                     set_rgb_led(0, LED_BRIGHTNESS_MAX, 0, 0); 
                 }         
-                else if (led_status_resister & CLEAN_MODE_BIT){
-                    Breathing_Setup(1,2,0,255,0,0,0,255,0,0);
-                    Breathing_LED();
-                }         
             }
             // [우선순위 2] 비트가 다 꺼진 정상 상태라면 op_mode 적용
             else {
@@ -323,10 +319,9 @@ static void LED_task(void *pvParameter)
                 else
                 {
                     switch(last_op_mode) {
-                        case OP_MODE_NORMAL: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
-                        case OP_MODE_NIGHT:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX/2); break;
-                        case OP_MODE_SMART:  set_rgb_led(0,0 , LED_BRIGHTNESS_MAX, 0); break;
-                        case OP_MODE_SLEEP:  set_rgb_led(0, 0, 0, 0);; break;
+                        case FEED_MODE_SCHEDULED_PORTION: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
+                        case FEED_MODE_MANUAL_PORTION:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX/2); break;
+                        case FEED_MODE_FREE_FEEDING:  set_rgb_led(0,0 , LED_BRIGHTNESS_MAX, 0); break;
                         default: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
                     }
                 }

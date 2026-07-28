@@ -47,6 +47,7 @@
 #include "debug_cli.h"
 #include "mqtt_cli.h"
 #include "gpio_util.h"
+#include "app_moter.h"
 const char jbx_pwd_1[16] = "#80860612";
 
 typedef struct xCOMMAND_INPUT_LIST
@@ -713,6 +714,7 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 	sprintf (pcWriteBuffer, "\r\n");
 	uint8_t cRxedChar = 0;
 	uint8_t cInputIndex = 0;
+	uint8_t index = 0;
 	while(1)
 	{
 			while(1)
@@ -727,50 +729,47 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 			switch(cRxedChar)
 			{
 				case 'q':
-					gpio_set_level(SLIDING_PWM_IN, 1);
+					//Sliding_CW();
+					start_motor_with_boost(index,0);
 				break;
 				case 'w':
-					gpio_set_level(SLIDING_PWM_IN, 0);
+					//Sliding_CCW();
+					start_motor_with_boost(index,1);
 				break;
 				case 'e':
-					gpio_set_level(SLIDING_PWM_CW, 0);
+					start_motor_with_boost(0,0);
 				break;
-				case 'r':
-					gpio_set_level(SLIDING_PWM_CW, 1);
+				case '<':
+					if(index)
+						index--;
+					printf("index = %d \n",index);
+				break;
+				case '>':
+					if(index < 100)
+						index++;
+					printf("index = %d \n",index);						
 				break;
 				case 'a':
-					gpio_set_level(FEED_PWM_IN, 1);
+					Feeder_CW();
 				break;
 				case 's':
-					gpio_set_level(FEED_PWM_IN, 0);
+					Feeder_CCW();
 				break;
 				case 'd':
-					gpio_set_level(FEED_PWM_CW, 0);
-				break;
-				case 'f':
-					gpio_set_level(FEED_PWM_CW, 1);
+					Feeder_OFF();
 				break;
 				case 'z':
-					gpio_set_level(ACUUM_PWM_IN, 0);
+					Accum_Set(true);
 				break;
 				case 'x':
-					gpio_set_level(ACUUM_PWM_IN, 1);
+					Accum_Set(false);
 				break;
 				case KEY_ESC:
-					gpio_set_level(SLIDING_PWM_IN, 0);
-					gpio_set_level(SLIDING_PWM_CW, 0);
-					gpio_set_level(FEED_PWM_IN, 0);
-					gpio_set_level(ACUUM_PWM_IN, 0);
-					gpio_set_level(FEED_PWM_CW, 0);	
+					motor_all_off();
 					return pdFALSE;	
 				break;
 				default:
-					// 기본 초기 출력 상태를 LOW(0)로 세팅
-					gpio_set_level(SLIDING_PWM_IN, 0);
-					gpio_set_level(SLIDING_PWM_CW, 0);
-					gpio_set_level(FEED_PWM_IN, 0);
-					gpio_set_level(ACUUM_PWM_IN, 0);
-					gpio_set_level(FEED_PWM_CW, 0);				
+					motor_all_off();			
 				break;
 			}
 			

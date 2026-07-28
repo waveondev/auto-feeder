@@ -22,6 +22,8 @@ typedef struct
     messege_tx_mqtt_cmd_e cmd;     
     uint8_t mac[6];    
     Motion_Packet_t packet;
+    pack_data* data;
+    uint32_t data_len;
 }tracker_mqtt_packet_t;
 
 #define WATER_LOW_FAULT                 (1<<0)

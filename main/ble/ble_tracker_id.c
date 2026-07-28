@@ -12,15 +12,9 @@
 TaskHandle_t xTrackerCaptureHandle = NULL;
 static const char *TAG = __FILE__;
 void Tracker_Device_disable(int i);
-typedef struct{
-    char Device_ID[32];
-    uint32_t total_Device_Time;
-    uint32_t Device_Time;
-    uint32_t Disable_Time; 
-    uint32_t diff_Time;           
-    uint32_t Enable;
-    uint32_t Water_intake;
-}Tracker_Device_t;
+
+
+
 #define TRACKER_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 #define TRACKER_DEVICE_MAX 20
 Tracker_Device_t* Tracker_Device[TRACKER_DEVICE_MAX];
@@ -28,7 +22,23 @@ Tracker_Device_t Tracker_UNKNOWN =
 {
     .Device_ID = "UNKNOWN",
 };
+Tracker_Device_t* Get_Tracker_Device(uint8_t* addr)
+{
+    int idx = -1;
+    for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
+        if(Tracker_Device[i] != NULL)
+        {
+            if (memcmp(Tracker_Device[i]->dev_info.addr, addr, 6) == 0) {
+                idx = i;
+                break;
+            }
+        }
+    }
+    if(idx == -1)
+        return NULL;
 
+    return Tracker_Device[idx];
+}
 // 1. 단일 디바이스 구조체 정보를 출력하는 헬퍼 함수
 void dump_tracker_device_info(const char* label, const Tracker_Device_t* dev)
 {
@@ -38,14 +48,31 @@ void dump_tracker_device_info(const char* label, const Tracker_Device_t* dev)
     }
     
     printf("%s\n", label);
-    printf("  ├─ Device ID    : %s\n", dev->Device_ID[0] != '\0' ? dev->Device_ID : "(None)");
-    printf("  ├─ Enable State : %s (%ld)\n", dev->Enable ? "ENABLED" : "DISABLED", dev->Enable);
-    printf("  ├─ Time Stats   : Total[%ld s] | Active[%ld s] | Disable[%ld s] | Diff[%ld s]\n", 
-           dev->total_Device_Time, 
-           dev->Device_Time, 
-           dev->Disable_Time, 
-           dev->diff_Time);
-    printf("  └─ Water Intake : %ld mL\n", dev->Water_intake);
+  
+    printf(" Device_ID       : %s\n", dev->Device_ID);
+
+    printf(" total_Device_Time : %ld\n", dev->total_Device_Time);
+    printf(" Device_Time       : %ld\n", dev->Device_Time);
+    printf(" Disable_Time      : %ld\n", dev->Disable_Time);
+    printf(" diff_Time         : %ld\n", dev->diff_Time);
+    printf(" Enable            : %ld\n", dev->Enable);
+    printf(" Water_intake      : %ld\n", dev->Water_intake);
+
+    printf(" ---- dev_info ----\n");
+
+    printf(" addr             : ");
+    for (int i = 0; i < 6; i++)
+    {
+        printf("%02X", dev->dev_info.addr[i]);
+        if (i < 5)
+            printf(":");
+    }
+    printf("\n");
+
+    printf(" name             : %s\n", dev->dev_info.name);
+    printf(" rssi             : %d\n", dev->dev_info.rssi);
+
+    printf("-----------------------------\n");
 }
 
 // 2. 전체 Tracker_Device 배열 및 UNKNOWN 객체를 덤프하는 함수
@@ -148,26 +175,36 @@ bool Tracker_device_time_add(int i)
     return ret;
 }   
 
-void Tracker_In_ID(char* Tracker_ID)
+void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 {
     int target_index = -1;
+    Tracker_Device_t* Tracker_target = Get_Tracker_Device(dev_info->addr);
 
+
+    printf(" addr             : ");
+    for (int i = 0; i < 6; i++)
+    {
+    printf("%02X", dev_info->addr[i]);
+    if (i < 5)
+        printf(":");
+    }
+    printf("\n");
+
+    printf(" name             : %s\n", dev_info->name);
+    printf(" rssi             : %d\n", dev_info->rssi);
+    if(Tracker_target != NULL)
+    {
+        Tracker_target->Enable = 1;
+        Tracker_target->Disable_Time = 0;
+        memcpy(&Tracker_target->dev_info,dev_info,sizeof(dev_info_t));
+        return;
+    }
     // 🌟 배열을 처음부터 끝까지 스캔하며 중복 검사 및 빈자리 탐색
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
-        
         // 1. 자리가 채워져 있는 경우 -> ID 중복 검사 수행
-        if (Tracker_Device[i] != NULL) {
-            if (strcmp(Tracker_Device[i]->Device_ID, Tracker_ID) == 0) {
-                Tracker_Device[i]->Enable = 1;
-                Tracker_Device[i]->Disable_Time = 0;
-                // 🚨 [중복 발견!] 생성하지 않고 경고 후 즉시 함수 종료
-                printf("[알림] 장치 생성 실패: ID [%s]는 이미 %d번 슬롯에 존재합니다.\n", Tracker_ID, i);
-                return; 
-            }
-        }
-        // 2. 자리가 비어있는 경우 -> 첫 번째로 발견된 빈자리 인덱스 기억
-        else if (target_index == -1) {
+        if (Tracker_Device[i] == NULL) {
             target_index = i; // 최초 1회만 빈자리 저장 (이후 루프는 중복 검사를 위해 계속 돎)
+            break;
         }
     }
 
@@ -183,6 +220,7 @@ void Tracker_In_ID(char* Tracker_ID)
     // 🛠️ 2. [수정] 데이터 명확하게 초기화 (쓰레기 값 제거)
     memset(p_dev, 0, sizeof(Tracker_Device_t)); // 전체 0으로 초기화
 
+    memcpy(&p_dev->dev_info,dev_info,sizeof(dev_info_t));
     // 2. 데이터 초기화 (시간은 0ms부터 시작)
     strncpy(p_dev->Device_ID, Tracker_ID, sizeof(p_dev->Device_ID) - 1);
     p_dev->Enable = 1;

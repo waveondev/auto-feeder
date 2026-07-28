@@ -1,13 +1,11 @@
 #ifndef __OPMODE_TASK_H__
 #define __OPMODE_TASK_H__
 
-
 typedef enum {
-    OP_MODE_NORMAL = 0,
-    OP_MODE_NIGHT,
-    OP_MODE_SMART,
-    OP_MODE_SLEEP,
-    OP_MODE_TEST
+    FEED_MODE_SCHEDULED_PORTION = 0, // 정량/정시 배식
+    FEED_MODE_MANUAL_PORTION    = 1, // 정량 배식 (수동/즉시)
+    FEED_MODE_FREE_FEEDING      = 2, // 자율 배식
+    OP_MODE_TEST                = 3
 } op_mode_e;
 
 // SMART 모드 내부 상태 머신 정의

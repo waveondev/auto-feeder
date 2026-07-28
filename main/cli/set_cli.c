@@ -20,8 +20,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
     int	val32 = 0;
 	app_wifi_config_t* wifi_config = get_wifi_config();
 	app_config_t* app_config = get_app_config();
-	uint32_t* Filter_Used_Time = get_filter_time();
-	uint32_t* Motor_Used_Time = get_motor_time();
+
 	/* Remove compile time warnings about unused parameters, and check the
 	write buffer is not NULL.  NOTE - for simplicity, this example assumes the
 	write buffer length is adequate, so does not check for buffer overflows. */
@@ -76,10 +75,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				offset += sprintf (&pcWriteBuffer[offset], "\r\nset \r\n");
 			}
-			else if (!strncmp(ag[1], "duty", 4))
-			{
-				set_motor_speed_percent(atoi(ag[2]));
-            }
+
 			else if (!strncmp(ag[1], "ledr", 4))
 			{
                 val32 = atoi(ag[2]);
@@ -149,20 +145,20 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					hx1_offset_buf = app_config->hx1_offset;
 					case_raw_data_buf = app_config->case_raw_data;
 					memset(app_config, 0,sizeof(app_config_t));
-					app_config->op_mode = OP_MODE_NORMAL;
-					app_config->pump_clean_duration = 180;
-					app_config->filter_life_days = 30;
-					app_config->moter_life_days = 60;
-					app_config->min_weight_threshold = 200;
-					app_config->splash_delta_g = 100;
+					app_config->op_mode = FEED_MODE_SCHEDULED_PORTION;
+					app_config->sliding_close_mode = 0;
+					app_config->motor_current_limit = 1200;
+					app_config->sound_effect_idx = 0;
+					app_config->food_low_limit = 10;
 					app_config->gate_way_rssi_th = -85;
 					app_config->hx1_scale = 1000.0f;
 					app_config->hx1_offset = 0;
 					app_config->case_raw_data = 0;
 					app_config->tof_sense_threshold_l = 250;
-					app_config->tof_sense_threshold_r = 250;
 					app_config->motion_data_time = 1800;
 					app_config->EFFECTIVE_DWELL_TIME = 5;
+					app_config->dispense_duration = 2400;
+					app_config->dispense_amount_g = 50;
 					sprintf(app_config->env_mode,"dev");
 					if(atoi(ag[3]))
 					{
@@ -173,21 +169,6 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 
 					app_nvs_save_set();
 				}										
-			}	
-			#define SECONDS_IN_DAYS    (24UL * 60UL * 60UL)
-			else if (!strncmp(ag[1], "filter", 6))
-			{
-				if(atoi(ag[2]))
-					(*Filter_Used_Time) = (app_config->filter_life_days * SECONDS_IN_DAYS)-2;
-				else
-				 	filter_change();
-			}	
-			else if (!strncmp(ag[1], "motor", 5))
-			{
-				if(atoi(ag[2]))
-					(*Motor_Used_Time) = (app_config->moter_life_days * SECONDS_IN_DAYS)-2;
-				else
-				 	motor_change();
 			}	
 			else if (!strncmp(ag[1], "slid", 4))
 			{

@@ -6,6 +6,8 @@
 #include "app_adc.h"
 #include "gpio_util.h"
 #include "debug_cli.h"
+#include "app_moter.h"
+#include "esp_adc/adc_continuous.h"
 static const char *TAG = __FILE__;
 
 
@@ -24,9 +26,8 @@ static adc_cali_handle_t cali_ch6_handle = NULL;
 static bool do_cali_ch0 = false;
 static bool do_cali_ch5 = false;
 static bool do_cali_ch6 = false;
-adc_oneshot_unit_handle_t adc1_handle;
 
-
+adc_continuous_handle_t adc_handle = NULL;
 
 static bool init_adc_calibration(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle) {
     adc_cali_handle_t handle = NULL;
@@ -80,89 +81,148 @@ mv_ch0 > 800
 
 void ADC_Sensing(void)
 {
-    #if 1
-        int raw_ch0 = 0;
-        int raw_ch5 = 0;
-        int raw_ch6 = 0;
-        int mv_ch0 = 0;
-        int mv_ch5 = 0;
-        int mv_ch6 = 0;
-        esp_err_t err_ch;
-        DBG_Resister_t* DBG_Resister = Debug_Get();
-        // --- 채널 0 (GPIO 6 - ADC1) 읽기 ---
-        err_ch = adc_oneshot_read(adc1_handle, ADC_CH_GPIO1, &raw_ch0);
-        if (err_ch == ESP_OK) {
-            if (do_cali_ch0) {
-                adc_cali_raw_to_voltage(cali_ch0_handle, raw_ch0, &mv_ch0);
-                if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  1 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw_ch0, mv_ch0, (float)mv_ch0 / 1000.0f);
-            } else {
-                if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  1 (ADC1) -> Raw: %4d (No Calibration)\r\n", raw_ch0);
-            }
-        } else {
-            if(DBG_Resister->adc)
-                ESP_LOGE(TAG, "Failed to read GPIO 6 (%s)", esp_err_to_name(err_ch));
-        }
+    uint8_t result_buf[36] = {0};
+    uint32_t ret_num = 0;
+    uint32_t number_sum = 0;
+    esp_err_t ret =ESP_OK;
+    int ch0_mv = 0;
+    int ch5_mv = 0;
+    int ch6_mv = 0;    
+    // DMA 버퍼 읽기
+    // 10ms 동안 수집된 DMA 데이터 읽기
+    ret = adc_continuous_read(adc_handle,
+                            result_buf,
+                            sizeof(result_buf),
+                            &ret_num,
+                            0);
 
-        err_ch = adc_oneshot_read(adc1_handle, ADC_CH_GPIO6, &raw_ch5);
-        if (err_ch == ESP_OK) {
-            if (do_cali_ch5) {
-                adc_cali_raw_to_voltage(cali_ch5_handle, raw_ch5, &mv_ch5);
-                if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  6 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw_ch5, mv_ch5, (float)mv_ch5 / 1000.0f);
-            } else {
-                if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  6 (ADC1) -> Raw: %4d (No Calibration)\r\n", raw_ch5);
-            }
-        } else {
-            if(DBG_Resister->adc)
-                ESP_LOGE(TAG, "Failed to read GPIO 6 (%s)", esp_err_to_name(err_ch));
-        }
+    DBG_Resister_t* DBG_Resister = Debug_Get();
+    if (ret == ESP_OK)
+    {
+        uint32_t chan = 0;
+        uint32_t raw  = 0;
+            int mv_out = 0;
+        // SOC_ADC_DIGI_DATA_BYTES(4바이트 또는 2바이트) 보폭으로 파싱
+        for (int i = 0; i < ret_num; i += CONFIG_SOC_ADC_DIGI_DATA_BYTES_PER_CONV)
+        {
+            adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result_buf[i];
+            
+            // ESP-IDF v5.x 공통 구조체 접근
+            chan = p->type2.channel;
+            raw  = p->type2.data;
 
-        err_ch = adc_oneshot_read(adc1_handle, ADC_CH_GPIO7, &raw_ch6);
-        if (err_ch == ESP_OK) {
-            if (do_cali_ch6) {
-                adc_cali_raw_to_voltage(cali_ch6_handle, raw_ch6, &mv_ch6);
-                if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  7 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw_ch6, mv_ch6, (float)mv_ch6 / 1000.0f);
-            } else {
-                if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  7 (ADC1) -> Raw: %4d (No Calibration)\r\n", raw_ch6);
+
+            switch (chan)
+            {
+                case ADC_CHANNEL_0: // GPIO 1
+                    if (do_cali_ch0) {
+                        adc_cali_raw_to_voltage(cali_ch0_handle, raw, &mv_out);
+                        if (mv_out > 300) {
+                            Accum_Set(false);
+                        }
+                    }
+                    
+                break;
+
+                case ADC_CHANNEL_5: // GPIO 6
+                    if (do_cali_ch5) {
+                        adc_cali_raw_to_voltage(cali_ch5_handle, raw, &mv_out);
+                        if (mv_out > 600) {
+                            Sliding_OFF();
+                        }
+                    }
+                break;
+
+                case ADC_CHANNEL_6: // GPIO 7
+                    if (do_cali_ch6) {
+                        adc_cali_raw_to_voltage(cali_ch6_handle, raw, &mv_out);
+                        if(mv_out > 200)
+                            Feeder_OFF();   
+                    }
+                break;
+
+                default:
+                    break;
             }
-        } else {
-            if(DBG_Resister->adc)
-                ESP_LOGE(TAG, "Failed to read GPIO 6 (%s)", esp_err_to_name(err_ch));
         }
-        #endif
+        switch (chan)
+        {
+            case ADC_CHANNEL_0: // GPIO 1
+                if (do_cali_ch0) {
+                    if(DBG_Resister->adc)
+                        ESP_LOGI(TAG, "GPIO  1 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw, mv_out, (float)mv_out / 1000.0f);
+                }
+                
+                break;
+
+            case ADC_CHANNEL_5: // GPIO 6
+                if (do_cali_ch5) {
+                    if(DBG_Resister->adc)
+                    ESP_LOGI(TAG, "GPIO  6 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw, mv_out, (float)mv_out / 1000.0f);
+                }
+                break;
+
+            case ADC_CHANNEL_6: // GPIO 7
+                if (do_cali_ch6) {
+                    if(DBG_Resister->adc)
+                        ESP_LOGI(TAG, "GPIO  7 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw, mv_out, (float)mv_out / 1000.0f);                        
+                }
+                break;
+
+            default:
+                break;
+        } 
+    }
 }
 void adc_init(void) {
-#if 1
-    adc_oneshot_unit_init_cfg_t init_cfg1= { .unit_id = ADC_UNIT_1 };
- 
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg1, &adc1_handle));
-
-    adc_oneshot_chan_cfg_t chan_cfg = {
-        .bitwidth = ADC_BITWIDTH_DEFAULT, 
-        .atten = EXAMPLE_ADC_ATTEN,
+// 1. DMA 핸들 생성
+    adc_continuous_handle_cfg_t handle_cfg = {
+        .max_store_buf_size = 256,
+        .conv_frame_size = 36,
     };
-// GPIO 1 (ADC1 Channel 0) 선언
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CH_GPIO1, &chan_cfg));
+    ESP_ERROR_CHECK(adc_continuous_new_handle(&handle_cfg, &adc_handle));
 
-    // GPIO 6 (ADC1 Channel 5) 선언
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CH_GPIO6, &chan_cfg));
+    // 2. 3개 채널(GPIO 1, 6, 7) 패턴 등록
+    adc_continuous_config_t dig_cfg = {
+        .sample_freq_hz = 2000, // 20kHz 샘플링
+        .conv_mode = ADC_CONV_SINGLE_UNIT_1, // ADC1 단독 사용
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
+    };
 
-    // GPIO 7 (ADC1 Channel 6) 선언
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CH_GPIO7, &chan_cfg));
+    adc_digi_pattern_config_t adc_pattern[3] = {0};
 
+    // [채널 0] GPIO 1 (ADC_CHANNEL_0)
+    adc_pattern[0].atten = EXAMPLE_ADC_ATTEN;
+    adc_pattern[0].channel = ADC_CHANNEL_0;
+    adc_pattern[0].unit = ADC_UNIT_1;
+    adc_pattern[0].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
 
+    // [채널 5] GPIO 6 (ADC_CHANNEL_5)
+    adc_pattern[1].atten = EXAMPLE_ADC_ATTEN;
+    adc_pattern[1].channel = ADC_CHANNEL_5;
+    adc_pattern[1].unit = ADC_UNIT_1;
+    adc_pattern[1].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
 
-    do_cali_ch0 = init_adc_calibration(CH0_ADC_UNIT, ADC_CH_GPIO1, EXAMPLE_ADC_ATTEN, &cali_ch0_handle);
-    do_cali_ch5 = init_adc_calibration(CH0_ADC_UNIT, ADC_CH_GPIO6, EXAMPLE_ADC_ATTEN, &cali_ch5_handle);
-    do_cali_ch6 = init_adc_calibration(CH0_ADC_UNIT, ADC_CH_GPIO7, EXAMPLE_ADC_ATTEN, &cali_ch6_handle);
+    // [채널 6] GPIO 7 (ADC_CHANNEL_6)
+    adc_pattern[2].atten = EXAMPLE_ADC_ATTEN;
+    adc_pattern[2].channel = ADC_CHANNEL_6;
+    adc_pattern[2].unit = ADC_UNIT_1;
+    adc_pattern[2].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
 
-    ESP_LOGI(TAG, "Dual ADC Initialized successfully ");
-    #endif
+    dig_cfg.pattern_num = 3;
+    dig_cfg.adc_pattern = adc_pattern;
+
+    ESP_ERROR_CHECK(adc_continuous_config(adc_handle, &dig_cfg));
+
+    // 3. 캘리브레이션은 기존 방식 그대로 유지!
+    do_cali_ch0 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_0, EXAMPLE_ADC_ATTEN, &cali_ch0_handle);
+    do_cali_ch5 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_5, EXAMPLE_ADC_ATTEN, &cali_ch5_handle);
+    do_cali_ch6 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_6, EXAMPLE_ADC_ATTEN, &cali_ch6_handle);
+
+    // 4. DMA 수집 시작
+    ESP_ERROR_CHECK(adc_continuous_start(adc_handle));
+
+    ESP_LOGI(TAG, "ADC DMA Mode (3 Channels) Initialized successfully");
 }
 
 

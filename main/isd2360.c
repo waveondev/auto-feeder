@@ -232,8 +232,8 @@ void isd2360_task(void* arg)
     Set_ISD3800_Playing_Path();
     
     // 4. 5번 매크로(음원) 재생 명령 전송
-    ESP_LOGI(TAG, "Executing PLAY_VP(5)...");
-    ISD3800_PLAY_VP(5);
+    //ESP_LOGI(TAG, "Executing PLAY_VP(5)...");
+    //ISD3800_PLAY_VP(5);
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10));

@@ -50,35 +50,37 @@ static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 #ifndef BIT64
 #define BIT64 BIT
 #endif
-
-static uint32_t read_raw(gpio_num_t dout, gpio_num_t pd_sck, hx711_gain_t gain)
+static int32_t read_raw(gpio_num_t dout, gpio_num_t pd_sck, hx711_gain_t gain)
 {
-
     portENTER_CRITICAL(&mux);
 
-    // read data
     uint32_t data = 0;
+
     for (size_t i = 0; i < 24; i++)
     {
         gpio_set_level(pd_sck, 1);
         esp_rom_delay_us(1);
+
         data |= gpio_get_level(dout) << (23 - i);
+
         gpio_set_level(pd_sck, 0);
         esp_rom_delay_us(1);
     }
 
-    // config gain + channel for next read
+    // gain/channel select
     for (size_t i = 0; i <= gain; i++)
     {
         gpio_set_level(pd_sck, 1);
         esp_rom_delay_us(1);
+
         gpio_set_level(pd_sck, 0);
         esp_rom_delay_us(1);
     }
 
     portEXIT_CRITICAL(&mux);
 
-    return data;
+
+    return (int32_t)data;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -119,7 +121,7 @@ esp_err_t hx711_set_gain(hx711_t *dev, hx711_gain_t gain)
 {
     CHECK_ARG(dev && gain <= HX711_GAIN_A_64);
 
-    CHECK(hx711_wait(dev, 200)); // 200 ms timeout
+    CHECK(hx711_wait(dev, 1000)); // 200 ms timeout
 
     read_raw(dev->dout, dev->pd_sck, gain);
     dev->gain = gain;
@@ -153,7 +155,7 @@ esp_err_t hx711_read_data(hx711_t *dev, int32_t *data)
 {
     CHECK_ARG(dev && data);
 
-    uint32_t raw = read_raw(dev->dout, dev->pd_sck, dev->gain);
+    int32_t raw = read_raw(dev->dout, dev->pd_sck, dev->gain);
     if (raw & 0x800000)
         raw |= 0xff000000;
     *data = *((int32_t *)&raw);
@@ -165,15 +167,28 @@ esp_err_t hx711_read_average(hx711_t *dev, size_t times, int32_t *data)
 {
     CHECK_ARG(dev && times && data);
 
-    int32_t v;
+
+    int32_t v,a=0;
     *data = 0;
     for (size_t i = 0; i < times; i++)
     {
-        CHECK(hx711_wait(dev, 200));
-        CHECK(hx711_read_data(dev, &v));
-        *data += v;
+        //CHECK(hx711_wait(dev, 200));
+        //CHECK(hx711_read_data(dev, &v));
+        if(hx711_wait(dev, 1000) == ESP_OK)
+        {
+            if(hx711_read_data(dev, &v) == ESP_OK)
+            {
+                *data += v;
+                a++;
+            }
+            else
+                i++;
+        }
+        else
+            i++;        
+
     }
-    *data /= (int32_t) times;
+    *data /= (int32_t) a;
 
     return ESP_OK;
 }

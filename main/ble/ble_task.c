@@ -23,7 +23,7 @@
 #include "device_config.h"
 static const char *TAG = __FILE__;
 
-#define DEVICE_NAME "Wave_Peri2"
+#define DEVICE_NAME "Wave_T2"
 #define MY_UUID128_BASE(XX, YY) \
     BLE_UUID128_DECLARE(0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, \
                         0xF3, 0x93, 0xB5, 0xA3, YY, XX, 0x40, 0x6E)
@@ -221,20 +221,34 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_DISC:
     {
         // 주변 기기 정보를 통합 저장할 저장소 (최대 20개)
-        typedef struct {
-            uint8_t addr[6];
-            char name[32];
-            int8_t rssi;
-        } dev_info_t;
         app_config_t* app_config = get_app_config();
-        static dev_info_t dev_list[20];
-        static int dev_count = 0;
+        dev_info_t dev_list;
+        memset(&dev_list, 0,sizeof(dev_info_t));
 
-       rc = ble_hs_adv_parse_fields(&fields, event->disc.data, event->disc.length_data);
+        rc = ble_hs_adv_parse_fields(&fields, event->disc.data, event->disc.length_data);
         if (rc != 0) {
             return 0;
         }
 
+        Tracker_Device_t* Tracker_Device = Get_Tracker_Device(event->disc.addr.val);
+        
+        // 현재 패킷에서 이름을 추출해 봅니다.
+        char current_packet_name[32] = "";
+        if (fields.name != NULL && fields.name_len > 0) {
+            int len = (fields.name_len > 31) ? 31 : fields.name_len;
+            memcpy(current_packet_name, fields.name, len);
+            current_packet_name[len] = '\0';
+        } else if (Tracker_Device != NULL) {
+            // 이번 패킷에 이름은 없지만 기존 캐시 리스트에 저장된 이름이 있다면 가져옵니다.
+            strcpy(current_packet_name, Tracker_Device->dev_info.name);
+        }
+
+        // -----------------------------------------------------------------
+        // 3. ⚡️ Service UUID 16-bit 검사 (0x1234 인지 확인)
+        // -----------------------------------------------------------------
+        if (fields.svc_data_uuid16 == NULL || fields.svc_data_uuid16_len <= 0) {
+            return 0; // 서비스 데이터가 아예 없으면 차단
+        }
         // -----------------------------------------------------------------
         // 1. ⚡️ [새로운 필터] RSSI 조건 검사 (간혹 부호가 헷갈릴 수 있으니 주의)
         //    * 수신 감도가 -55 dBm 이하(예: -56, -60, -70 dBm처럼 멀리 있는 기기)인 경우만 통과
@@ -244,59 +258,32 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
             return 0; // -55보다 큰 신호는 여기서 즉시 차단
         }
 
-        // -----------------------------------------------------------------
-        // 2. ⚡️ 임시 이름 확인 및 캐시 검색을 위한 준비
-        //    * BLE 스캔 패킷 특성상 이름이 항상 들어오지 않으므로, 
-        //      먼저 현재 패킷에 이름이 있거나 혹은 기존 캐시에 등록되어 있는지 찾아야 합니다.
-        // -----------------------------------------------------------------
-        int idx = -1;
-        for (int i = 0; i < dev_count; i++) {
-            if (memcmp(dev_list[i].addr, event->disc.addr.val, 6) == 0) {
-                idx = i;
-                break;
-            }
-        }
-
-        // 현재 패킷에서 이름을 추출해 봅니다.
-        char current_packet_name[32] = "";
-        if (fields.name != NULL && fields.name_len > 0) {
-            int len = (fields.name_len > 31) ? 31 : fields.name_len;
-            memcpy(current_packet_name, fields.name, len);
-            current_packet_name[len] = '\0';
-        } else if (idx != -1) {
-            // 이번 패킷에 이름은 없지만 기존 캐시 리스트에 저장된 이름이 있다면 가져옵니다.
-            strcpy(current_packet_name, dev_list[idx].name);
-        }
-        // -----------------------------------------------------------------
-        // 3. ⚡️ Service UUID 16-bit 검사 (0x1234 인지 확인)
-        // -----------------------------------------------------------------
-        if (fields.svc_data_uuid16 == NULL || fields.svc_data_uuid16_len <= 0) {
-            return 0; // 서비스 데이터가 아예 없으면 차단
-        }
-
         uint16_t svc_uuid = (fields.svc_data_uuid16[1] << 8) | fields.svc_data_uuid16[0];
-        if (svc_uuid != 0x1234) {
-            return 0; // 우리가 찾는 0x1234 서비스가 아니면 차단
-        }
-        // -----------------------------------------------------------------
-        // 4. 🎉 모든 방어벽 통과! 이제야 안심하고 `dev_list`에 저장/업데이트 진행
-        // -----------------------------------------------------------------
-        if (idx == -1) {
-            // 기존 리스트에 없던 신규 기기라면 새로 빈 공간 확보
-            if (dev_count < 20) {
-                idx = dev_count++;
-            } else {
-                static int rolling_idx = 0;
-                idx = rolling_idx;
-                rolling_idx = (rolling_idx + 1) % 20;
+        if (svc_uuid == 0x1234)
+        {
+            if (event->disc.rssi < app_config->gate_way_rssi_th)
+            {
+                return 0; // RSSI 기준 미달 차단
             }
-            memset(&dev_list[idx], 0, sizeof(dev_info_t));
-            memcpy(dev_list[idx].addr, event->disc.addr.val, 6);
         }
-
+        else if (svc_uuid == 0x4321)
+        {
+            if (event->disc.rssi < -50)
+            {
+                return 0; // RSSI 기준 미달 차단
+            }
+        }
+        else
+        {
+            return 0; // 다른 서비스 UUID는 차단
+        }
+        for (int i = 0; i < 6; i++)
+        {
+            dev_list.addr[i] = event->disc.addr.val[5-i];
+        }
         // 최신 이름과 RSSI 데이터 업데이트 저장
-        strcpy(dev_list[idx].name, current_packet_name);
-        dev_list[idx].rssi = event->disc.rssi;
+        strcpy(dev_list.name, current_packet_name);
+        dev_list.rssi = event->disc.rssi;
 
 
         // -----------------------------------------------------------------
@@ -304,12 +291,6 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         // -----------------------------------------------------------------
         const uint8_t *actual_data = fields.svc_data_uuid16 + 2;
         int actual_data_len = fields.svc_data_uuid16_len - 2;
-
-        printf("\n🎯 [Wave_Tracker] 조건 만족 기기 dev_list 저장 완료 🎯\n");
-        printf("MAC  : %02X:%02X:%02X:%02X:%02X:%02X (%d dBm)\n",
-               event->disc.addr.val[5], event->disc.addr.val[4], event->disc.addr.val[3],
-               event->disc.addr.val[2], event->disc.addr.val[1], event->disc.addr.val[0],
-               dev_list[idx].rssi);
 
         if (actual_data_len > 0) {
             char str_dump_buf[64] = {0}; 
@@ -331,13 +312,11 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
 
             // 3. 🌟 C언어 문자열의 완성: 맨 끝에 널 문자 강제 삽입 (안전장치)
             str_dump_buf[buf_idx] = '\0';
-            Tracker_In_ID(str_dump_buf);
+            Tracker_In_ID(&dev_list, str_dump_buf);
             // 4. 결과 출력 테스트
-            printf("STR  : %s\n", str_dump_buf);
         } else {
             printf("HEX  : 서비스 데이터 페이로드가 비어있음\n");
         }
-        printf("-------------------------------------\n");
 
         return 0;
     }
