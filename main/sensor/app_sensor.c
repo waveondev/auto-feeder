@@ -20,8 +20,24 @@ static const char *TAG = __FILE__;
 #define PACKED __attribute__((packed))
 #endif
 
+bool Sliding_Back_Enable(void)
+{
+    return gpio_get_level(SLIDING_A_SEN) == 1 ? true: false;
+}
 
+bool Sliding_Front_Enable(void)
+{
+    return gpio_get_level(SLIDING_B_SEN) == 1 ? true: false;
+}
+bool IROUT1_Detected_State(void)
+{
+    return gpio_get_level(IR_OUT1) == 0 ? true: false;
+}
 
+bool IROUT0_Detected_State(void)
+{
+    return gpio_get_level(IR_OUT0) == 0 ? true: false;
+}
 void Sensor_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Starting sensor task");
@@ -42,7 +58,8 @@ void Sensor_task(void *pvParameter)
 // 3개 핀 비트마스크 구성 (1ULL << 핀번호)
     uint64_t pin_mask = (1ULL << SLIDING_A_SEN) | 
                         (1ULL << SLIDING_B_SEN) | 
-                        (1ULL << FEED_SEN)| 
+                        (1ULL << FEED_SEN) | 
+                        (1ULL << IR_OUT1) |
                         (1ULL << IR_OUT0);
 
     gpio_config_t io_conf = {                   
@@ -61,17 +78,18 @@ void Sensor_task(void *pvParameter)
         #if 1
         #endif
         VL53L0X_Sensing();
-        //ESP_LOGI(TAG, "gpio_set_level(IR) = %d\r\n",gpio_get_level(IR_OUT0));
-        vTaskDelay(30 / portTICK_PERIOD_MS);
+
+        //ESP_LOGI(TAG, "gpio_set_level(IR_OUT0) = %d\r\n",gpio_get_level(IR_OUT0));
+        //ESP_LOGI(TAG, "gpio_set_level(IR_OUT1) = %d\r\n",gpio_get_level(IR_OUT1));
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     
 }
 
 bool sensor_init(void)
 {
-    static uint8_t ucParameterToPass;
-    TaskHandle_t xHandle = NULL;
-        gpio_config_t io_conf = {                   
+
+    gpio_config_t io_conf = {                   
         .pin_bit_mask = (1ULL << IR_ONOFF0),             // 설정할 GPIO 핀 15, 16, 2 지정
         .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
         .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
@@ -80,17 +98,17 @@ bool sensor_init(void)
     };
     gpio_config(&io_conf);
 
-    gpio_set_level(IR_ONOFF0, 1);   
+    //gpio_set_level(IR_ONOFF0, 1);   
 
-    HX711_task_init();
+
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(
             Sensor_task,                  // 태스크 함수
             "sensor_task",                // 태스크 이름
             SENSOR_TASK_STACK_SIZE,       // 스택 크기
-            &ucParameterToPass,        // 파라미터
+            NULL,        // 파라미터
             tskIDLE_PRIORITY + 4,      // 우선순위
-            &xHandle,                  // 태스크 핸들
+            NULL,                  // 태스크 핸들
             1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
         ESP_LOGE(TAG, "Error creating Sensor_task on Core 1");

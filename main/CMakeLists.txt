@@ -24,7 +24,10 @@ idf_component_register(
         "${CMAKE_CURRENT_LIST_DIR}/../components/common/posix_compat"
         "${CMAKE_CURRENT_LIST_DIR}/config"
         "${CMAKE_CURRENT_LIST_DIR}/crypto"
-
+        "${CMAKE_CURRENT_LIST_DIR}/motor"
+        "${CMAKE_CURRENT_LIST_DIR}/sensor"
+        "${CMAKE_CURRENT_LIST_DIR}/gpio"
+        "${CMAKE_CURRENT_LIST_DIR}/flash"
     # 블루투스, OTA, NVS flash에 더해 'driver'(GPIO용)까지 싹 다 명시합니다.
     # 💡 esp_https_ota.h 에러를 해결하기 위해 여기에 명시적으로 등록합니다.
     REQUIRES 

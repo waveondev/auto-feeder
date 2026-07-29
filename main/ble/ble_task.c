@@ -268,7 +268,7 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         }
         else if (svc_uuid == 0x4321)
         {
-            if (event->disc.rssi < -50)
+            if (event->disc.rssi < -60)
             {
                 return 0; // RSSI 기준 미달 차단
             }

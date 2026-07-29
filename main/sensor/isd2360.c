@@ -239,21 +239,20 @@ void isd2360_task(void* arg)
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
-
+#define ISD2360_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 void isd2360_taskinit(void) {
     // SPI 초기화만 진행
     isd2360_spi_init();
 
-    TaskHandle_t xHandle = NULL;
-    static uint8_t ucParameterToPass;
+
     
     if (xTaskCreatePinnedToCore(
             isd2360_task,                  
             "isd2360_task",                
-            4096,       // 스택 크기가 타이트할 수 있어 4096으로 상향 조정
-            &ucParameterToPass,        
+            ISD2360_TASK_STACK_SIZE,       // 스택 크기가 타이트할 수 있어 4096으로 상향 조정
+            NULL,        
             tskIDLE_PRIORITY + 1,      
-            &xHandle,                  
+            NULL,                  
             1                          
         ) != pdPASS) { 
         ESP_LOGE(TAG, "Error creating isd2360_task on Core 1");

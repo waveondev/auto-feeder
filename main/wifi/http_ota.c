@@ -30,7 +30,7 @@
 #endif
 #include "http_ota.h"
 #include "app_led.h"
-TaskHandle_t xOTA_Handle = NULL;
+static TaskHandle_t xOTA_Handle = NULL;
 static uint8_t OTA_Enable = 0;
 #define HASH_LEN 32
 
@@ -227,7 +227,6 @@ void ota_main(const char* URL)
     esp_wifi_set_ps(WIFI_PS_NONE);
 #endif // CONFIG_EXAMPLE_CONNECT_WIFI
 
-    TaskHandle_t xHandle = NULL;
     ESP_LOGI(TAG,"simple_ota_example_task task_start");
     if (xTaskCreatePinnedToCore(
             simple_ota_example_task,                  // 태스크 함수

@@ -6,8 +6,10 @@
 #include "app_adc.h"
 #include "gpio_util.h"
 #include "debug_cli.h"
-#include "app_moter.h"
+#include "app_slid_motor.h"
 #include "esp_adc/adc_continuous.h"
+#include "app_feed_motor.h"
+#include "app_acc_motor.h"
 static const char *TAG = __FILE__;
 
 
@@ -101,7 +103,7 @@ void ADC_Sensing(void)
     {
         uint32_t chan = 0;
         uint32_t raw  = 0;
-            int mv_out = 0;
+
         // SOC_ADC_DIGI_DATA_BYTES(4바이트 또는 2바이트) 보폭으로 파싱
         for (int i = 0; i < ret_num; i += CONFIG_SOC_ADC_DIGI_DATA_BYTES_PER_CONV)
         {
@@ -110,13 +112,14 @@ void ADC_Sensing(void)
             // ESP-IDF v5.x 공통 구조체 접근
             chan = p->type2.channel;
             raw  = p->type2.data;
-
+            int mv_out = 0;
 
             switch (chan)
             {
                 case ADC_CHANNEL_0: // GPIO 1
                     if (do_cali_ch0) {
                         adc_cali_raw_to_voltage(cali_ch0_handle, raw, &mv_out);
+                        ch0_mv = mv_out;
                         if (mv_out > 300) {
                             Accum_Set(false);
                         }
@@ -127,8 +130,9 @@ void ADC_Sensing(void)
                 case ADC_CHANNEL_5: // GPIO 6
                     if (do_cali_ch5) {
                         adc_cali_raw_to_voltage(cali_ch5_handle, raw, &mv_out);
-                        if (mv_out > 600) {
-                            Sliding_OFF();
+                        ch5_mv = mv_out;
+                        if (mv_out > 1000) {
+                            Sliding_break();
                         }
                     }
                 break;
@@ -136,8 +140,9 @@ void ADC_Sensing(void)
                 case ADC_CHANNEL_6: // GPIO 7
                     if (do_cali_ch6) {
                         adc_cali_raw_to_voltage(cali_ch6_handle, raw, &mv_out);
+                        ch6_mv = mv_out;
                         if(mv_out > 200)
-                            Feeder_OFF();   
+                            Feeder_break();   
                     }
                 break;
 
@@ -150,7 +155,7 @@ void ADC_Sensing(void)
             case ADC_CHANNEL_0: // GPIO 1
                 if (do_cali_ch0) {
                     if(DBG_Resister->adc)
-                        ESP_LOGI(TAG, "GPIO  1 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw, mv_out, (float)mv_out / 1000.0f);
+                        ESP_LOGI(TAG, "GPIO  1 (ADC1) Voltage: %4d mV (%.2f V)\r\n", ch0_mv, (float)ch0_mv / 1000.0f);
                 }
                 
                 break;
@@ -158,14 +163,14 @@ void ADC_Sensing(void)
             case ADC_CHANNEL_5: // GPIO 6
                 if (do_cali_ch5) {
                     if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  6 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw, mv_out, (float)mv_out / 1000.0f);
+                    ESP_LOGI(TAG, "GPIO  6 (ADC1)  Voltage: %4d mV (%.2f V)\r\n", ch5_mv, (float)ch5_mv / 1000.0f);
                 }
                 break;
 
             case ADC_CHANNEL_6: // GPIO 7
                 if (do_cali_ch6) {
                     if(DBG_Resister->adc)
-                        ESP_LOGI(TAG, "GPIO  7 (ADC1) -> Raw: %4d | Voltage: %4d mV (%.2f V)\r\n", raw, mv_out, (float)mv_out / 1000.0f);                        
+                        ESP_LOGI(TAG, "GPIO  7 (ADC1) Voltage: %4d mV (%.2f V)\r\n", ch6_mv, (float)ch6_mv / 1000.0f);                        
                 }
                 break;
 
@@ -186,7 +191,7 @@ void adc_init(void) {
     adc_continuous_config_t dig_cfg = {
         .sample_freq_hz = 2000, // 20kHz 샘플링
         .conv_mode = ADC_CONV_SINGLE_UNIT_1, // ADC1 단독 사용
-        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };
 
     adc_digi_pattern_config_t adc_pattern[3] = {0};

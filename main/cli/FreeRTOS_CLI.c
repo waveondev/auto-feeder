@@ -47,7 +47,9 @@
 #include "debug_cli.h"
 #include "mqtt_cli.h"
 #include "gpio_util.h"
-#include "app_moter.h"
+#include "app_slid_motor.h"
+#include "app_feed_motor.h"
+#include "app_acc_motor.h"
 const char jbx_pwd_1[16] = "#80860612";
 
 typedef struct xCOMMAND_INPUT_LIST
@@ -729,15 +731,16 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 			switch(cRxedChar)
 			{
 				case 'q':
-					//Sliding_CW();
-					start_motor_with_boost(index,0);
+					Sliding_CW();
 				break;
 				case 'w':
-					//Sliding_CCW();
-					start_motor_with_boost(index,1);
+					Sliding_CCW();
 				break;
 				case 'e':
-					start_motor_with_boost(0,0);
+					Sliding_break();
+				break;
+				case 'r':
+					Sliding_coast();
 				break;
 				case '<':
 					if(index)
@@ -756,7 +759,10 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 					Feeder_CCW();
 				break;
 				case 'd':
-					Feeder_OFF();
+					Feeder_break();
+				break;
+				case 'f':
+					Feeder_coast();
 				break;
 				case 'z':
 					Accum_Set(true);
@@ -765,11 +771,11 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 					Accum_Set(false);
 				break;
 				case KEY_ESC:
-					motor_all_off();
+					
 					return pdFALSE;	
 				break;
 				default:
-					motor_all_off();			
+								
 				break;
 			}
 			
@@ -1049,16 +1055,14 @@ void vRegisterDefaultCLICommands(uint8_t level)
 
 void console_task_init(void)
 {
-    static uint8_t ucParameterToPass;
-    TaskHandle_t xHandle = NULL;
     ESP_LOGI(TAG,"console task_start");
     if (xTaskCreatePinnedToCore(
             console_main,                  // 태스크 함수
             "Console_Main",                // 태스크 이름
             CONSOLE_TASK_STACK_SIZE,       // 스택 크기
-            &ucParameterToPass,        // 파라미터
+            NULL,        // 파라미터
             tskIDLE_PRIORITY + 1,      // 우선순위
-            &xHandle,                  // 태스크 핸들
+            NULL,                  // 태스크 핸들
             1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
               ESP_LOGE(TAG, "Error creating Console_Main on Core 1");

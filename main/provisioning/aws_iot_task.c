@@ -70,7 +70,14 @@ void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Pac
 static void aws_iot_main_entry(void *pvParameters)
 {
     ESP_LOGI(TAG, "AWS IoT 전담 태스크 시작");
-
+    // Wi-Fi 연결 대기 (IP 할당 확인)
+    xEventGroupWaitBits(
+        s_wifi_event_group,
+        WIFI_CONNECTED_BIT,
+        pdFALSE,
+        pdTRUE,
+        portMAX_DELAY
+    );
     // -------------------------------------------------------------
     // 1. [1회성 초기화] 큐 및 타이머 생성을 루프 밖에서 단 1번만 수행
     // -------------------------------------------------------------

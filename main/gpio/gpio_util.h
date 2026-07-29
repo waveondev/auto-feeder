@@ -54,9 +54,9 @@ typedef enum {
 #define FEED_SEN  19
 
 #define IR_ONOFF0 21
+
 #define IR_OUT0  4
-
-
+#define IR_OUT1  5
 
 void gpio_init(gpio_num_t num, gpio_mode_t mode, gpio_int_type_t int_type,gpio_isr_t func);
 void gpio_toggle(gpio_num_t pin);

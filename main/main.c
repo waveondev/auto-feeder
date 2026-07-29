@@ -12,7 +12,7 @@
 #include "FreeRTOS_CLI.h"
 #include "gpio_util.h"
 #include "lwip/apps/mqtt.h"
-#include "app_moter.h"
+#include "app_slid_motor.h"
 #include "app_button.h"
 #include "app_led.h"
 #include "app_adc.h"

@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "app_config_flash.h"
 #include "driver/gpio.h"
-#include "app_moter.h"
+#include "app_slid_motor.h"
 #include "opmode_task.h"
 #include "wifi_task.h"
 #include "ble_task.h"
@@ -148,8 +148,6 @@ static void double_click_timer_callback(TimerHandle_t xTimer)
 
 void button_task_init(void)
 {
-    static uint8_t ucParameterToPass;
-
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_PKEY_STAT),
         .mode = GPIO_MODE_INPUT,
@@ -167,17 +165,13 @@ void button_task_init(void)
     double_click_timer = xTimerCreate("double_click_timer", pdMS_TO_TICKS(DOUBLE_CLICK_DELAY_MS), 
                                       pdFALSE, (void*)0, double_click_timer_callback);
                                       
-    // ⚠️ long_press_timer 생성 코드도 삭제되었습니다.
-    
-    TaskHandle_t xHandle = NULL;
-
     if (xTaskCreatePinnedToCore(
             Button_task,
             "button_task",
             BUTTON_TASK_STACK_SIZE,
-            &ucParameterToPass,
+            NULL,
             tskIDLE_PRIORITY + 2,
-            &xHandle,
+            NULL,
             1
         ) != pdPASS) {
         ESP_LOGE(TAG, "Error creating Button_task on Core 1");

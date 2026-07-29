@@ -4,7 +4,7 @@
 #include "freertos/queue.h"
 #include "app_config_flash.h"
 
-#include "app_moter.h"
+#include "app_slid_motor.h"
 #include "app_TOF.h"
 #include "app_led.h"
 #include "app_HX711.h"
@@ -36,7 +36,6 @@ void Opmode_test_mode(void)
 void Opmode_Set(void)
 {
     app_config_t* app_config = get_app_config();
-    //start_motor_with_boost(0,0);
     switch(current_opmode)
     {
         case FEED_MODE_SCHEDULED_PORTION:
@@ -133,7 +132,7 @@ static void Opmode_task(void *pvParameter)
         {
             if(ota_enable() || hardware_error_enable())
             {
-                motor_all_off();
+                //motor_all_off();
             }
             else
             {
@@ -145,8 +144,8 @@ static void Opmode_task(void *pvParameter)
                             {
                             
                             }
-                            else
-                                motor_all_off();
+                            //else
+                                //motor_all_off();
                         }
                         break;
                         // 타 모드는 기본 구조 유지
@@ -292,8 +291,6 @@ static void Opmode_task(void *pvParameter)
 
 void opmode_task_init(void)
 {
-    TaskHandle_t xHandle = NULL;
-    static uint8_t ucParameterToPass;
     app_config_t* app_config = get_app_config();
     current_opmode = app_config->op_mode;
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
@@ -301,9 +298,9 @@ void opmode_task_init(void)
             Opmode_task,                  // 태스크 함수
             "opmode_task",                // 태스크 이름
             OPMODE_TASK_STACK_SIZE,       // 스택 크기
-            &ucParameterToPass,        // 파라미터
+            NULL,        // 파라미터
             tskIDLE_PRIORITY + 2,      // 우선순위
-            &xHandle,                  // 태스크 핸들
+            NULL,                  // 태스크 핸들
             1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
         

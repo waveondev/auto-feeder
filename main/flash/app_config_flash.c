@@ -324,16 +324,15 @@ static void flash_task(void *pvParameter)
 
 void NVS_Flash_init(void)
 {
-    TaskHandle_t xHandle = NULL;
-    static uint8_t ucParameterToPass;
+
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(
             flash_task,                  // 태스크 함수
             "flash_task",                // 태스크 이름
             FLASH_TASK_STACK_SIZE,       // 스택 크기
-            &ucParameterToPass,        // 파라미터
+            NULL,        // 파라미터
             tskIDLE_PRIORITY + 1,      // 우선순위
-            &xHandle,                  // 태스크 핸들
+            NULL,                  // 태스크 핸들
             1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
         

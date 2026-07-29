@@ -1,5 +1,5 @@
 #include "set_cli.h"
-#include "app_moter.h"
+#include "app_slid_motor.h"
 #include "app_led.h"
 #include "wifi_task.h"
 #include "app_HX711.h"
