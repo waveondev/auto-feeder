@@ -8,6 +8,8 @@
 #include "ble_parse.h"
 #include "ble_task.h"
 #include "gpio_util.h"
+#include "isd2360.h"
+#include "app_feed_motor.h"
 BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
     const char *pcParameter;
@@ -156,7 +158,6 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					app_config->case_raw_data = 0;
 					app_config->tof_sense_threshold_l = 250;
 					app_config->motion_data_time = 1800;
-					app_config->EFFECTIVE_DWELL_TIME = 5;
 					app_config->dispense_duration = 2400;
 					app_config->dispense_amount_g = 50;
 					sprintf(app_config->env_mode,"dev");
@@ -170,20 +171,6 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					app_nvs_save_set();
 				}										
 			}	
-			else if (!strncmp(ag[1], "slid", 4))
-			{
-				if(atoi(ag[2]))
-					 gpio_set_level(SLIDING_PWM_IN, 1);
-				else
-				 	 gpio_set_level(SLIDING_PWM_IN, 0);
-			}	
-			else if (!strncmp(ag[1], "feed", 4))
-			{
-				if(atoi(ag[2]))
-					 gpio_set_level(FEED_PWM_IN, 1);
-				else
-				 	 gpio_set_level(FEED_PWM_IN, 0);
-			}	
 			else if (!strncmp(ag[1], "acuum", 5))
 			{
 				if(atoi(ag[2]))
@@ -196,7 +183,21 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 				app_wifi_config_t* wifi_config = get_wifi_config();
 				Wifi_Connect((char*)wifi_config->conn_ssid,(const char*)wifi_config->conn_password);
 			}	
+			else if (!strncmp(ag[1], "music", 5))
+			{
+				isd2360_set(atoi(ag[2]));
+			}	
+			else if (!strncmp(ag[1], "feed", 4))
+			{
+				feeder_mode_init();
+			}		
+			else if (!strncmp(ag[1], "onoff", 5))
+			{
+				gpio_set_level(IR_ONOFF0, atoi(ag[2])?1:0);
+			}		
+    
 
+			  
 			/* There are more parameters to return after this one. */
 //			pcWriteBuffer[ 0 ] = 0x00;
 			xReturn = pdFALSE;

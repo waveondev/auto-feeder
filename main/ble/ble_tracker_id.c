@@ -9,7 +9,7 @@
 #include "app_config_flash.h"
 #include "ble_task.h"
 #include "ble_parse.h"
-
+#include "app_sensor.h"
 static const char *TAG = __FILE__;
 void Tracker_Device_disable(int i);
 
@@ -180,7 +180,7 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
     int target_index = -1;
     Tracker_Device_t* Tracker_target = Get_Tracker_Device(dev_info->addr);
 
-
+#if 0
     printf(" addr             : ");
     for (int i = 0; i < 6; i++)
     {
@@ -192,6 +192,7 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 
     printf(" name             : %s\n", dev_info->name);
     printf(" rssi             : %d\n", dev_info->rssi);
+#endif
     if(Tracker_target != NULL)
     {
         Tracker_target->Enable = 1;
@@ -199,6 +200,7 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
         memcpy(&Tracker_target->dev_info,dev_info,sizeof(dev_info_t));
         return;
     }
+        
     // 🌟 배열을 처음부터 끝까지 스캔하며 중복 검사 및 빈자리 탐색
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
         // 1. 자리가 채워져 있는 경우 -> ID 중복 검사 수행
@@ -295,7 +297,7 @@ void vTrackerCaptureTask(void *pvParameters)
             }
         }
         for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
-            if(Time_ratio_state() == SMART_RUN_STABLE)
+            if(Sliding_Front_Enable())
             {      
                 Tracker_device_time_add(i);
             }

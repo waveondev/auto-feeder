@@ -716,7 +716,7 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 	sprintf (pcWriteBuffer, "\r\n");
 	uint8_t cRxedChar = 0;
 	uint8_t cInputIndex = 0;
-	uint8_t index = 0;
+	uint8_t index = 100;
 	while(1)
 	{
 			while(1)
@@ -731,10 +731,10 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 			switch(cRxedChar)
 			{
 				case 'q':
-					Sliding_CW();
+					Sliding_CW(index);
 				break;
 				case 'w':
-					Sliding_CCW();
+					Sliding_CCW(index);
 				break;
 				case 'e':
 					Sliding_break();

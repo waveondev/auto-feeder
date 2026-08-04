@@ -14,6 +14,7 @@
 #include "driver/rmt_tx.h"
 #include "app_sensor.h"
 #include "app_feed_motor.h"
+#include "app_acc_motor.h"
 static const char *TAG = __FILE__;
 
 rmt_channel_handle_t pwm_chan = NULL;
@@ -88,26 +89,36 @@ void set_slid_motor_speed_percent(int percentage, bool CW) {
 }
 
 
-
-void Sliding_CW(void)
+static bool Motor_CW = false;    
+static bool Motor_enable = false;
+static bool feeder_enable = false;
+void Sliding_CW(int speed)
 {
     if(Sliding_Front_Enable())
     {
         ESP_LOGW(TAG, "FRONT MAX");        
         return;
     }
-
-    start_slid_motor_with_boost(100,MOTOR_CW);
+    if(Motor_enable && Motor_CW == false)
+    {
+        //ESP_LOGW(TAG, "Motor_enable");    
+        return;
+    }
+    start_slid_motor_with_boost(speed,MOTOR_CW);
 }
-void Sliding_CCW(void)
+void Sliding_CCW(int speed)
 {
     if(Sliding_Back_Enable())
     {
         ESP_LOGW(TAG, "BACK MAX");        
         return;
     }
-
-    start_slid_motor_with_boost(100,MOTOR_CCW);
+    if(Motor_enable && Motor_CW == true)
+    {
+       // ESP_LOGW(TAG, "Motor_enable");    
+        return;
+    }
+    start_slid_motor_with_boost(speed,MOTOR_CCW);
 }
 
 void Sliding_coast(void)
@@ -120,44 +131,35 @@ void Sliding_break(void)
     start_slid_motor_with_boost(0,MOTOR_BREAK);
 }
 
-void start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motion)
+bool start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motion)
 {
     slid_motor_boost_args_t send_data;
 
-    if(Motor_motion == MOTOR_COAST)
-    {
-        set_slid_motor_speed_percent(0, true);
-    }
-    else if (Motor_motion == MOTOR_BREAK)
-    {
-        set_slid_motor_speed_percent(0, false);/* code */
-    }
-    
     send_data.target_percentage = target_percentage; // 10%, 20%, 30% ...
     send_data.Motor_Motion = Motor_motion;       // 2초, 4초, 6초 ...
 
-    ESP_LOGI("SENDER", "큐 전송 시도 -> 속도: %d%%, 시간: %d초", 
+    ESP_LOGI(TAG, "큐 전송 시도 -> 속도: %d%%, 시간: %d초", 
                 send_data.target_percentage, send_data.Motor_Motion);
     BaseType_t xStatus = xQueueSend(slid_motor_queue, &send_data, pdMS_TO_TICKS(100));
     
     if (xStatus == pdPASS) {
-        ESP_LOGI("SENDER", "큐 전송 완료!");
+        ESP_LOGI(TAG, "큐 전송 완료!");
+        return true;
     } else {
-        ESP_LOGE("SENDER", "큐가 가득 차서 전송 실패 (Timeout)!");
+        ESP_LOGE(TAG, "큐가 가득 차서 전송 실패 (Timeout)!");
+        return false;
     }
+    
 }
 
 
 static void slidmotor_boost_task(void *pvParameters)
 {
     slid_motor_boost_args_t received_data;
-    bool Motor_CW = false;    
-    bool Motor_enable = false;
-    bool Feed_MoterEn = false;
     while(1)
     {
-        if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
-            ESP_LOGW("RECEIVER", "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", 
+        if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(1)) == pdPASS) {
+            ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", 
                      received_data.target_percentage, received_data.Motor_Motion);
 
             switch(received_data.Motor_Motion)
@@ -179,12 +181,7 @@ static void slidmotor_boost_task(void *pvParameters)
                     received_data.target_percentage = 0;
                     Motor_CW = false;
                     Motor_enable = false;            
-                break;   
-                case MOTOR_FEEDER:
-                    Motor_CW = true;    
-                    Motor_enable = true;               
-                break;  
-                                                             
+                break;                                                                
             }
             
             set_slid_motor_speed_percent(received_data.target_percentage, Motor_CW);
@@ -205,11 +202,7 @@ static void slidmotor_boost_task(void *pvParameters)
                 {
                     Sliding_coast();
                     Motor_enable = false;
-                    if(Feed_MoterEn)
-                    {
-                        start_feed_motor_with_boost(0,MOTOR_FEEDER);
-                    }
-                }
+                }  
             }
         }
     }
@@ -272,6 +265,8 @@ void init_motor_ledc(void) {
     }
     #endif
     Sliding_break();
+    init_feed_motor();
+    init_acc_motor();
 }
 
 

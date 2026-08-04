@@ -34,20 +34,34 @@ static int buffer_idx_L = 0;
  * @param new_value 새로 측정된 센서 값
  */
 static void moving_average_update_l(uint16_t new_value) {
-    TOF_Buf_L[buffer_idx_L] = new_value;
-    buffer_idx_L = (buffer_idx_L + 1) % FILTER_SIZE;
+    if (buffer_idx_L < FILTER_SIZE) {
+        // 1. 아직 10개가 다 안 찼으면 앞에서부터 순서대로(0, 1, 2...) 채움
+        TOF_Buf_L[buffer_idx_L] = new_value;
+        buffer_idx_L++;
+    } else {
+        // 2. 10개가 꽉 차면 memmove로 한 칸씩 밀고 맨 끝(9번 방)에 최신 데이터 넣음
+        memmove(&TOF_Buf_L[0], &TOF_Buf_L[1], sizeof(uint32_t) * (FILTER_SIZE - 1));
+        TOF_Buf_L[FILTER_SIZE - 1] = new_value;
+    }
 }
 /**
  * @brief 현재 버퍼에 쌓인 데이터들의 평균값을 계산하여 반환하는 함수
  * @return float 최근 FILTER_SIZE 개수의 평균값
  */
 uint16_t moving_average_get_L(void) {
+// 예외 처리: 들어온 데이터가 없으면 0 반환 (0으로 나누기 에러 방지)
+    if (buffer_idx_L == 0) {
+        return 0;
+    }
+
     uint32_t sum = 0;
-    for (int i = 0; i < FILTER_SIZE; i++) {
+
+    // 딱 현재 쌓여 있는 buffer_idx_L 개수만큼만 앞에서부터 순회하며 합산
+    for (int i = 0; i < buffer_idx_L; i++) {
         sum += TOF_Buf_L[i];
     }
 
-    return (uint16_t)(sum / FILTER_SIZE);
+    return (uint16_t)(sum / buffer_idx_L);
 }
 
 static bool init_single_vl53l0x(VL53L0X_Dev_t *pDevice, i2c_port_t i2c_port, const char *sensor_name)
@@ -133,7 +147,6 @@ bool VL53L0X_Detect(void)
 void VL53L0X_Sensing(void)
 {
     VL53L0X_RangingMeasurementData_t measure_data0;
-    uint32_t now_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
     // --- TOF0 (I2C 포트 0) 측정 ---
     if (g_tof0_ok) {
@@ -164,12 +177,28 @@ bool TOF_VL53L0X_init(void)
     i2c_config_t i2c_bus0_cfg = {
         .mode = I2C_MODE_MASTER,
         .sda_io_num = PIN_TOF0_I2C_SDA,
-        .sda_pullup_en = GPIO_PULLUP_DISABLE,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_io_num = PIN_TOF0_I2C_SCL,
-        .scl_pullup_en = GPIO_PULLUP_DISABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = 100000, // 400kHz
     };
     
+// 3개 핀 비트마스크 구성 (1ULL << 핀번호)
+    uint64_t pin_mask = (1ULL << PIN_TOF0_INT);
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = pin_mask,             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_ENABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+
+    // GPIO 설정 적용
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    gpio_set_level(PIN_TOF0_INT,1);
+
+    vTaskDelay(100);
     if (i2c_param_config(I2C_NUM_0, &i2c_bus0_cfg) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to config I2C Port 0");
     }

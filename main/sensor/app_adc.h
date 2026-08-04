@@ -2,6 +2,8 @@
 #define __APP_ADC_H__
 void adc_init(void) ;
 void ADC_Sensing(void);
-
+int GetSlid_ADC(void);
+int GetFeed_ADC(void);
+int GetAcc_ADC(void);
 #endif
 

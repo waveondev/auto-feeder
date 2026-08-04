@@ -42,29 +42,7 @@ typedef enum
 	PD = BIT7,
 }E_ISD3800_STATUS;		
 
-
-uint16_t ISD3800_READ_STATUS(void);
-uint32_t ISD3800_READ_ID(void);
-void ISD3800_PWR_UP(void);
-void ISD3800_PWR_DN(void);
-void ISD3800_PLAY_VP(uint16_t u16Index);
-void ISD3800_PLAY_VP_LP(uint16_t u16Index, uint16_t u16loop);
-void ISD3800_EXE_VM(uint16_t u16Index);
-void ISD3800_STOP_LP(void);
-void ISD3800_STOP(void);
-void ISD3800_SET_CLK_CFG(uint8_t u8ClkReg);
-uint8_t ISD3800_RD_CLK_CFG(void);
-void ISD3800_WR_CFG_REG(uint8_t u8Reg, uint8_t u8Data);
-uint8_t ISD3800_RD_CFG_REG(uint8_t u8Reg);
-void ISD3800_WaitReady(uint8_t Status);
-
-void ISD3800_DIG_WRITE(uint32_t u32StartAddr, uint8_t * u8DataStream, uint32_t u32Cnt);
-void ISD3800_ERASE_MEM(uint32_t u32StartAddr, uint32_t u32EndAddr);
-void ISD3800_CHIP_ERASE(void);
-void ISD3800_DIG_READ(uint32_t u32StartAddr, uint8_t * u8DataStream, uint32_t u32Cnt);
-
-
-
+void isd2360_set(int index);
 void isd2360_taskinit(void);
 
 

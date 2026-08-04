@@ -270,9 +270,9 @@ void delete_nvs_key(const char* name, const char* key)
     // 2. 🔥 특정 Key 삭제 함수 호출
     err = nvs_erase_key(my_handle, key);
     if (err == ESP_OK) {
-        ESP_LOGI("NVS", "[%s] Key 삭제 성공", key);
+        ESP_LOGI(TAG, "[%s] Key 삭제 성공", key);
     } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW("NVS", "[%s] 지우려고 보니 원래 없는 Key였습니다.", key);
+        ESP_LOGW(TAG, "[%s] 지우려고 보니 원래 없는 Key였습니다.", key);
     }
 
     // 3. 지웠다는 사실을 최종 커밋(플래시에 반영)하고 닫기
@@ -292,7 +292,7 @@ void delete_nvs_namespace(const char* name)
     // 2. 🔥 해당 Namespace 안의 모든 Key 일괄 삭제!
     err = nvs_erase_all(my_handle);
     if (err == ESP_OK) {
-        ESP_LOGI("NVS", "[%s] 네임스페이스 전체 삭제 성공 (초기화 완료)", name);
+        ESP_LOGI(TAG, "[%s] 네임스페이스 전체 삭제 성공 (초기화 완료)", name);
     }
 
     // 3. 커밋 후 핸들 닫기
@@ -303,7 +303,7 @@ void delete_nvs_namespace(const char* name)
 
 void print_all_nvs_keys(void)
 {
-    ESP_LOGI("NVS_DUMP", "========== NVS Key Dump Start ==========");
+    ESP_LOGI(TAG, "========== NVS Key Dump Start ==========");
     
     // NVS 파티션의 모든 에트리 검색 시작 ("nvs" 파티션의 모든 항목)
     nvs_iterator_t it = NULL;
@@ -319,7 +319,7 @@ void print_all_nvs_keys(void)
         nvs_entry_info(it, &info);
         
         // Namespace, Key 이름, 데이터 타입 출력
-        ESP_LOGI("NVS_DUMP", "Namespace: %-15s | Key: %-15s | Type: 0x%02x", 
+        ESP_LOGI(TAG, "Namespace: %-15s | Key: %-15s | Type: 0x%02x", 
                  info.namespace_name, info.key, info.type);
 
         // 다음 엔트리로 이동
@@ -328,7 +328,7 @@ void print_all_nvs_keys(void)
     
     // 이터레이터 해제
     nvs_release_iterator(it);
-    ESP_LOGI("NVS_DUMP", "========== NVS Key Dump End ==========");
+    ESP_LOGI(TAG, "========== NVS Key Dump End ==========");
 
 
     nvs_stats_t nvs_stats;
@@ -342,16 +342,16 @@ void print_all_nvs_keys(void)
         size_t used_bytes  = nvs_stats.used_entries * 32;
         size_t free_bytes  = nvs_stats.free_entries * 32;
 
-        ESP_LOGI("NVS_STATS", "================ NVS Memory Stats ================");
-        ESP_LOGI("NVS_STATS", "전체 용량 : %d 엔트리 (%d Bytes / 약 %.1f KB)", 
+        ESP_LOGI(TAG, "================ NVS Memory Stats ================");
+        ESP_LOGI(TAG, "전체 용량 : %d 엔트리 (%d Bytes / 약 %.1f KB)", 
                  nvs_stats.total_entries, total_bytes, (float)total_bytes / 1024.0f);
-        ESP_LOGI("NVS_STATS", "사용 용량 : %d 엔트리 (%d Bytes / 약 %.1f KB)", 
+        ESP_LOGI(TAG, "사용 용량 : %d 엔트리 (%d Bytes / 약 %.1f KB)", 
                  nvs_stats.used_entries, used_bytes, (float)used_bytes / 1024.0f);
-        ESP_LOGI("NVS_STATS", "남은 용량 : %d 엔트리 (%d Bytes / 약 %.1f KB)", 
+        ESP_LOGI(TAG, "남은 용량 : %d 엔트리 (%d Bytes / 약 %.1f KB)", 
                  nvs_stats.free_entries, free_bytes, (float)free_bytes / 1024.0f);
-        ESP_LOGI("NVS_STATS", "==================================================");
+        ESP_LOGI(TAG, "==================================================");
     } else {
-        ESP_LOGE("NVS_STATS", "NVS 통계 정보를 가져오지 못했습니다. 에러: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "NVS 통계 정보를 가져오지 못했습니다. 에러: %s", esp_err_to_name(err));
     }
 
 }

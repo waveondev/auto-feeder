@@ -77,6 +77,25 @@ void bf_LongPress10SecAction(void) {
     //delay(1000); 
     //ESP.restart();
 }
+int button_press_state(void)
+{
+    if(is_pressed == true)
+    {
+        int64_t now = esp_timer_get_time() / 1000; // 현재 시간 (ms)
+        int64_t press_duration = now - pressed_time; // 누르고 있던 총 시간 계산
+
+        if (press_duration >= LONG_PRESS_10S_MS) {
+            return 3;
+        } 
+        else if (press_duration >= LONG_PRESS_5S_MS) {
+            return 2;
+        } 
+        else if (press_duration >= LONG_PRESS_3S_MS) {
+            return 1;
+        } 
+    }
+    return 0;
+}
 // 버튼 상태 및 타이머를 처리하는 메인 태스크
 static void Button_task(void* arg)
 {
@@ -91,9 +110,7 @@ static void Button_task(void* arg)
             
             // 3. 20ms를 기다리는 동안 큐에 추가로 쌓인 바운싱 노이즈(쓰레기 데이터)들 싹 비우기
             uint32_t dummy;
-            while(xQueueReceive(gpio_evt_queue, &dummy, 0)) {
-                // 비우기
-            }
+            xQueueReset(gpio_evt_queue);
 
             // 4. 노이즈가 모두 끝난 뒤의 '진짜 현재 버튼 상태'를 읽어옴
             int level = gpio_get_level(io_num);
@@ -124,10 +141,9 @@ static void Button_task(void* arg)
                     bf_LongPress3SecAction();
                 } 
                 else {
-                    // 3초 미만으로 누르고 뗀 경우에만 클릭(숏/더블)으로 취급
-                    click_count++;
-                    xTimerChangePeriod(double_click_timer, pdMS_TO_TICKS(DOUBLE_CLICK_DELAY_MS), 0);
-                    xTimerStart(double_click_timer, 0);
+                        click_count++;
+                        xTimerChangePeriod(double_click_timer, pdMS_TO_TICKS(DOUBLE_CLICK_DELAY_MS), 0);
+                        xTimerStart(double_click_timer, 0);
                 }
             }
         }

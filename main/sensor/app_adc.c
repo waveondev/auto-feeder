@@ -28,8 +28,24 @@ static adc_cali_handle_t cali_ch6_handle = NULL;
 static bool do_cali_ch0 = false;
 static bool do_cali_ch5 = false;
 static bool do_cali_ch6 = false;
-
+static int ch0_mv = 0;
+static int ch5_mv = 0;
+static int ch6_mv = 0;  
 adc_continuous_handle_t adc_handle = NULL;
+
+
+int GetAcc_ADC(void)
+{
+    return ch0_mv;
+}
+int GetSlid_ADC(void)
+{
+    return ch5_mv;
+}
+int GetFeed_ADC(void)
+{
+    return ch6_mv;
+}
 
 static bool init_adc_calibration(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle) {
     adc_cali_handle_t handle = NULL;
@@ -87,9 +103,7 @@ void ADC_Sensing(void)
     uint32_t ret_num = 0;
     uint32_t number_sum = 0;
     esp_err_t ret =ESP_OK;
-    int ch0_mv = 0;
-    int ch5_mv = 0;
-    int ch6_mv = 0;    
+  
     // DMA 버퍼 읽기
     // 10ms 동안 수집된 DMA 데이터 읽기
     ret = adc_continuous_read(adc_handle,
@@ -131,9 +145,6 @@ void ADC_Sensing(void)
                     if (do_cali_ch5) {
                         adc_cali_raw_to_voltage(cali_ch5_handle, raw, &mv_out);
                         ch5_mv = mv_out;
-                        if (mv_out > 1000) {
-                            Sliding_break();
-                        }
                     }
                 break;
 
@@ -141,7 +152,7 @@ void ADC_Sensing(void)
                     if (do_cali_ch6) {
                         adc_cali_raw_to_voltage(cali_ch6_handle, raw, &mv_out);
                         ch6_mv = mv_out;
-                        if(mv_out > 200)
+                        if(mv_out > 600)
                             Feeder_break();   
                     }
                 break;

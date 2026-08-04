@@ -8,4 +8,5 @@ void bf_LongPress5SecAction(void) ;
 void bf_LongPress3SecAction(void) ;
 void bf_DoubleClickAction(void) ;
 void bf_SingleClickAction(void);
+int button_press_state(void);
 #endif

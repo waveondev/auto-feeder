@@ -18,7 +18,6 @@ typedef struct{
     uint32_t tof_sense_threshold_l;
     uint32_t tof_sense_threshold_r;
     uint32_t motion_data_time;
-    uint32_t EFFECTIVE_DWELL_TIME;
     uint32_t dispense_duration; // 토출시간 (ms)
     uint32_t dispense_amount_g;     // 토출량 (g)    
     char env_mode[16];               // "dev" 또는 "prod" 저장용

@@ -23,9 +23,8 @@ app_config_t app_config =
     .case_raw_data = 0,
     .tof_sense_threshold_l = 250,
     .motion_data_time = 1800,
-    .dispense_duration = 2400,// 토출시간 (ms)
-    .dispense_amount_g = 50,// 토출량 (g)
-    .EFFECTIVE_DWELL_TIME = 5,
+    .dispense_duration = 240,// 토출시간 (분)
+    .dispense_amount_g = 100,// 토출량 (g)
     .env_mode = "dev"
 };
 
@@ -102,7 +101,6 @@ ESP_LOGI(TAG, "==================================================");
 
     ESP_LOGI(TAG, "  - ToF Sense Thr (L)     : %ld", app_config.tof_sense_threshold_l);
     ESP_LOGI(TAG, "  - Motion Data Time      : %ld", app_config.motion_data_time);
-    ESP_LOGI(TAG, "  - Effective Dwell Time  : %ld", app_config.EFFECTIVE_DWELL_TIME);
 
     ESP_LOGI(TAG, "  - dispense_duration     : %ld", app_config.dispense_duration);
     ESP_LOGI(TAG, "  - dispense_amount_g     : %ld", app_config.dispense_amount_g);

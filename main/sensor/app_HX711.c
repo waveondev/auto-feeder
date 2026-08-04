@@ -34,7 +34,7 @@ I (1743551) ./main/app_config_flash.c:   - case_raw_data        : 261253
 
 #include "hx711_lib.h"
 static int32_t hx711_data;
-static int32_t hx711_data_buf;
+static float hx711_data_buf;
 
 hx711_t dev = {
     .dout = PIN_HX711_DOUT,
@@ -43,29 +43,35 @@ hx711_t dev = {
 };
 static uint16_t hx711_cal_enable = 0;
 
-static void HX711_cal_process(void)
+static void HX711_scale_process(float weight)
+{
+    app_config_t* app_config = get_app_config();
+
+    hx711_calibrate_scale(&dev,10,weight,&app_config->hx1_scale,(int32_t)app_config->case_raw_data);
+
+    app_nvs_save_set();
+    ESP_LOGI(TAG, "Tare case set to %d(%.2f)\r\n", app_config->case_raw_data,(int32_t)app_config->hx1_scale);
+}
+
+static void HX711_case_raw_process(void)
 {
     app_config_t* app_config = get_app_config();
 
     int32_t cal_data = 0;
 
     while(hx711_read_average(&dev, 100, &cal_data) != ESP_OK){}
-    app_config->case_raw_data = cal_data;
+    app_config->case_raw_data = (cal_data);
+
     app_nvs_save_set();
-    ESP_LOGI(TAG, "Tare offset set to %d\r\n", app_config->hx1_offset);
+    ESP_LOGI(TAG, "Tare case set to %d(%.2f)\r\n", app_config->case_raw_data);
 }
 void HX711_cal_init(uint16_t cal)
 {
-    hx711_cal_enable = 1;
+    hx711_cal_enable = cal;
 }
 float loadcell_data_get(void)
 {
-    int case_weight = 0;
-    app_config_t* app_config = get_app_config();
-    case_weight = app_config->case_raw_data;
-    int32_t case_data = hx711_data_buf - case_weight;
-    float Data = (float)case_data / 100.0f;
-    return Data;
+    return hx711_data_buf;
 }
 void HX711_Sensing(void)
 {
@@ -74,26 +80,33 @@ void HX711_Sensing(void)
     app_config_t* app_config = get_app_config();
     if(hx711_cal_enable)
     {
+        if(hx711_cal_enable == 1)
+            HX711_case_raw_process();
+        else
+            HX711_scale_process((float)hx711_cal_enable);
         hx711_cal_enable = 0;
-        HX711_cal_process();
     }    
     r = hx711_read_average(&dev, 5, &hx711_data);
+
     if (r != ESP_OK)
     {
         ESP_LOGE(TAG, "Could not read data: %d (%s)", r, esp_err_to_name(r));
         return;
     }
-    hx711_data_buf = hx711_data;
+    // 1. 순수 차이값(음수 포함)을 정수로 먼저 계산
+    int32_t net_raw = hx711_data - app_config->case_raw_data;
+
+    // 2. float 변수에 대입하여 명확하게 float으로 변환 후 나눗셈
+    float net_raw_float = (float)net_raw;
+    hx711_data_buf = net_raw_float / app_config->hx1_scale;
     if(DBG_Resister->HX711)
     {
-            ESP_LOGI(TAG, "hx711_data: (%d)",hx711_data_buf);
+            ESP_LOGI(TAG, "hx711_data: (%d)",hx711_data);
     }
 
-
-
     if(DBG_Resister->HX711)
     {
-        ESP_LOGI(TAG, " Raw: %.2f g", loadcell_data_get());
+        ESP_LOGI(TAG, " Raw: %.2f g", hx711_data_buf);
     }
 
 }
@@ -136,7 +149,7 @@ bool HX711_task_init(void)
             NULL,                  // 태스크 핸들
             1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
-        ESP_LOGE(TAG, "Error creating Sensor_task on Core 1");
+        ESP_LOGE(TAG, "Error creating HX711_task on Core 1");
     }
 
     return true;

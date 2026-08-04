@@ -13,6 +13,7 @@
 
 #include "app_TOF.h"
 #include "debug_cli.h"
+#include "app_button.h"
 static led_strip_handle_t led_strip;
 static const char *TAG = __FILE__;
 #define LED_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
@@ -101,7 +102,7 @@ void led_bit_disable(uint16_t disable)
 void init_led_strip(void) {
     // 1. 네오픽셀 기본 설정 (v3.x 최신 규격)
     led_strip_config_t strip_config = {
-        .strip_gpio_num = BLINK_GPIO,
+        .strip_gpio_num = LED_RGB_GPIO,
         .max_leds = LED_NUMBERS,
         // ⚠️ v3.x에서는 아래와 같이 멤버명과 상수명이 바뀌었습니다!
         .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRBW, 
@@ -318,15 +319,27 @@ static void LED_task(void *pvParameter)
                 }
                 else
                 {
-                    switch(last_op_mode) {
-                        case FEED_MODE_SCHEDULED_PORTION: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
-                        case FEED_MODE_MANUAL_PORTION:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX/2); break;
-                        case FEED_MODE_FREE_FEEDING:  set_rgb_led(0,0 , LED_BRIGHTNESS_MAX, 0); break;
-                        default: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
+                    int button_state = button_press_state();
+                    if(button_state)
+                    {
+                        switch(button_state) {
+                            case 1: set_rgb_led(0, LED_BRIGHTNESS_MAX, 0, 0); break;
+                            case 2:  set_rgb_led(0, 0, LED_BRIGHTNESS_MAX, 0);; break;
+                            case 3:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX);; break;
+                            default: break;
+                        }
                     }
-                }
+                    else
+                    {
+                        switch(last_op_mode) {
+                            case FEED_MODE_SCHEDULED_PORTION: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
+                            case FEED_MODE_MANUAL_PORTION:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX/2); break;
+                            case FEED_MODE_FREE_FEEDING:  set_rgb_led(0,0 , LED_BRIGHTNESS_MAX, 0); break;
+                            default: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
+                        }
+                    }
 
-                
+                }
             // ESP_LOGE(TAG, "last_op_mode = %08x",last_op_mode);
             }
         }
@@ -343,7 +356,20 @@ static void LED_task(void *pvParameter)
 
 void LED_task_init(void)
 {
+// 3개 핀 비트마스크 구성 (1ULL << 핀번호)
+    uint64_t pin_mask = (1ULL << LED_WHITE_GPIO);
 
+    gpio_config_t io_conf = {
+        .pin_bit_mask = pin_mask,             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_ENABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+
+    // GPIO 설정 적용
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+   // gpio_set_level(LED_WHITE_GPIO,1);
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(
             LED_task,                  // 태스크 함수

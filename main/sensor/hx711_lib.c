@@ -167,28 +167,52 @@ esp_err_t hx711_read_average(hx711_t *dev, size_t times, int32_t *data)
 {
     CHECK_ARG(dev && times && data);
 
-
-    int32_t v,a=0;
+    int32_t v;
+    size_t success_count = 0; // 읽기 성공 횟수
     *data = 0;
+
     for (size_t i = 0; i < times; i++)
     {
-        //CHECK(hx711_wait(dev, 200));
-        //CHECK(hx711_read_data(dev, &v));
-        if(hx711_wait(dev, 1000) == ESP_OK)
+        if (hx711_wait(dev, 1000) == ESP_OK)
         {
-            if(hx711_read_data(dev, &v) == ESP_OK)
+            if (hx711_read_data(dev, &v) == ESP_OK)
             {
                 *data += v;
-                a++;
+                success_count++;
             }
-            else
-                i++;
         }
-        else
-            i++;        
-
+        // retry 등의 필요 없는 i++ 조작 제거 및 안정화
     }
-    *data /= (int32_t) a;
+
+    // 🛡️ [방어 코드] 단 한 번도 성공하지 못한 경우 (0 나누기 방지)
+    if (success_count == 0)
+    {
+        return ESP_FAIL; // 또는 ESP_ERR_TIMEOUT
+    }
+
+    *data /= (int32_t)success_count;
+
+    return ESP_OK;
+}
+
+esp_err_t hx711_calibrate_scale(hx711_t *dev, size_t times, float known_weight, float *calculated_scale, int32_t case_raw_data)
+{
+    CHECK_ARG(dev && times && known_weight > 0.0f && calculated_scale);
+
+    int32_t raw_avg = 0;
+    // 1. 기준 추를 올린 상태에서 Raw 값 읽기
+    CHECK(hx711_read_average(dev, times, &raw_avg));
+
+    // 2. (추를 올린 Raw 값 - 영점 Offset) / 기준 무게
+    int32_t net_raw = raw_avg - case_raw_data;
+    if (net_raw == 0) {
+        return ESP_ERR_INVALID_STATE; // 무게 변화가 없거나 영점이 잘못잡힘
+    }
+
+    float scale = (float)net_raw / known_weight;
+
+    // 3. 계산된 스케일을 장치 설정에 적용
+    *calculated_scale = scale;
 
     return ESP_OK;
 }

@@ -12,6 +12,9 @@
 #include "aws_iot_task.h"
 #include "app_sensor.h"
 #include "app_slid_motor.h"
+#include "app_HX711.h"
+#include "app_TOF.h"
+#include "app_acc_motor.h"
 static const char *TAG = __FILE__;
 
 static QueueHandle_t feed_motor_queue = NULL;
@@ -43,10 +46,6 @@ void Feeder_break(void)
 }
 
 
-
-
-
-
 static void feedmotor_boost_task(void *pvParameters)
 {
     int received_data;
@@ -54,15 +53,15 @@ static void feedmotor_boost_task(void *pvParameters)
     while(1)
     {
         if (xQueueReceive(feed_motor_queue, &received_data, portMAX_DELAY) == pdPASS) {
-            ESP_LOGW("RECEIVER", "큐 수신 완료! -> [모터 구동] 속도: %d",received_data);
-            if(Sliding_Back_Enable() == false)
+            ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d",received_data);
+
+            while(Sliding_Back_Enable() == false)
             {
-                start_slid_motor_with_boost(100,MOTOR_FEEDER);
-            }
-            else
-            {
-                Feeder_CW();
-            }
+                vTaskDelay(pdMS_TO_TICKS(1000)); 
+                ESP_LOGI(TAG,"SLID BACK WAIT");
+            }  
+
+            Feeder_CW();
         }
     }
 }
@@ -70,14 +69,13 @@ static void feedmotor_boost_task(void *pvParameters)
 
 void start_feed_motor_with_boost(int target_percentage, int Motor_motion)
 {
-
-    ESP_LOGI("SENDER", "큐 전송 시도 -> 속도: %d", Motor_motion);
+    ESP_LOGI(TAG, "큐 전송 시도 -> 속도: %d", Motor_motion);
     BaseType_t xStatus = xQueueSend(feed_motor_queue, &Motor_motion, pdMS_TO_TICKS(100));
     
     if (xStatus == pdPASS) {
-        ESP_LOGI("SENDER", "큐 전송 완료!");
+        ESP_LOGI(TAG, "큐 전송 완료!");
     } else {
-        ESP_LOGE("SENDER", "큐가 가득 차서 전송 실패 (Timeout)!");
+        ESP_LOGE(TAG, "큐가 가득 차서 전송 실패 (Timeout)!");
     }
 }
 

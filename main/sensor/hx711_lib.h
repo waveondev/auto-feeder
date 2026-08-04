@@ -134,6 +134,8 @@ esp_err_t hx711_read_data(hx711_t *dev, int32_t *data);
  */
 esp_err_t hx711_read_average(hx711_t *dev, size_t times, int32_t *data);
 
+
+esp_err_t hx711_calibrate_scale(hx711_t *dev, size_t times, float known_weight, float *calculated_scale, int32_t case_raw_data);
 #ifdef __cplusplus
 }
 #endif

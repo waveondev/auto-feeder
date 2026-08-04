@@ -377,11 +377,11 @@ static int ble_svc_gatt_handler(uint16_t conn_handle, uint16_t attr_handle, stru
             
             // NimBLE의 MAC 주소 배열은 역순(Little-Endian)으로 들어올 수 있으므로
             // 대문자 16진수 문자열로 출력하여 확인해봅니다.
-            ESP_LOGI("BLE_RX", "Connected Peer MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+            ESP_LOGI(TAG, "Connected Peer MAC: %02X:%02X:%02X:%02X:%02X:%02X",
                      peer_mac[5], peer_mac[4], peer_mac[3], 
                      peer_mac[2], peer_mac[1], peer_mac[0]);
         } else {
-            ESP_LOGW("BLE_RX", "Failed to find connection info for handle: %d", conn_handle);
+            ESP_LOGW(TAG, "Failed to find connection info for handle: %d", conn_handle);
         }
 
 

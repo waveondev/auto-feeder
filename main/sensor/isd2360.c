@@ -10,7 +10,7 @@
 
 spi_device_handle_t spi_dev;
 static const char *TAG = __FILE__;
-
+static QueueHandle_t isd2360_queue = NULL;
 /*---------------------------------------------------------------------------*/
 /* CS (Chip Select) 제어 함수 수동 구현                                         */
 /*---------------------------------------------------------------------------*/
@@ -46,7 +46,7 @@ static uint8_t esp32_spi_transfer_byte(uint8_t data)
 
 //==============================================================ISD3800/3900 함수들
 
-uint16_t ISD3800_READ_STATUS(void)
+static uint16_t ISD3800_READ_STATUS(void)
 {
     uint8_t Temp0, Temp1;
     uint16_t Temp;
@@ -60,20 +60,20 @@ uint16_t ISD3800_READ_STATUS(void)
     return Temp;     
 }
 
-void ISD3800_PWR_UP(void)
+static void ISD3800_PWR_UP(void)
 {
     ISD3800_CS_Low();
     esp32_spi_transfer_byte(PWR_UP);
     ISD3800_CS_High();   
 }
 
-void ISD3800_PWR_DN(void)
+static void ISD3800_PWR_DN(void)
 {
     ISD3800_CS_Low();
     esp32_spi_transfer_byte(PWR_DN);
     ISD3800_CS_High();
 }
-void ISD3800_WaitReady(uint8_t Status)
+static void ISD3800_WaitReady(uint8_t Status)
 {
     uint32_t spiread;
     int timeout = 0;
@@ -91,7 +91,7 @@ void ISD3800_WaitReady(uint8_t Status)
         // 2. 무한 루프 방지를 위한 타임아웃 (약 250ms)
         timeout++;
         if(timeout > 50) { 
-            ESP_LOGW("DEBUG", "WaitReady Timeout Force Pass! Status: 0x%02X", (unsigned int)spiread);
+            ESP_LOGW(TAG, "WaitReady Timeout Force Pass! Status: 0x%02X", (unsigned int)spiread);
             break; 
         }
         
@@ -99,7 +99,7 @@ void ISD3800_WaitReady(uint8_t Status)
     }
 }
 
-void ISD3800_PLAY_VP(uint16_t u16Index)
+static void ISD3800_PLAY_VP(uint16_t u16Index)
 {
     ISD3800_WaitReady(PD | DBUF_RDY | VM_BSY | CBUF_FUL);
 
@@ -110,7 +110,7 @@ void ISD3800_PLAY_VP(uint16_t u16Index)
     ISD3800_CS_High();   
 }
 
-void ISD3800_SET_CLK_CFG(uint8_t u8ClkReg)
+static void ISD3800_SET_CLK_CFG(uint8_t u8ClkReg)
 {
     ISD3800_WaitReady(PD | DBUF_RDY | VM_BSY | CBUF_FUL | CMD_BSY);
 
@@ -122,7 +122,7 @@ void ISD3800_SET_CLK_CFG(uint8_t u8ClkReg)
     ISD3800_WaitReady(PD | DBUF_RDY | VM_BSY | CBUF_FUL | CMD_BSY);
 }
 
-void ISD3800_WR_CFG_REG(uint8_t u8Reg, uint8_t u8Data)
+static void ISD3800_WR_CFG_REG(uint8_t u8Reg, uint8_t u8Data)
 {
     ISD3800_WaitReady(PD | DBUF_RDY);
 
@@ -133,7 +133,7 @@ void ISD3800_WR_CFG_REG(uint8_t u8Reg, uint8_t u8Data)
     ISD3800_CS_High();
 }
 
-void Set_ISD3800_Playing_Path(void)
+static void Set_ISD3800_Playing_Path(void)
 {  
     ISD3800_WR_CFG_REG(0x01, 0x20);  
     ISD3800_WR_CFG_REG(0x02, 0x44); 
@@ -142,7 +142,7 @@ void Set_ISD3800_Playing_Path(void)
     ISD3800_WR_CFG_REG(0x06, 0x00);  
 }
 
-void isd2360_read_id_accurate(void) {
+static void isd2360_read_id_accurate(void) {
     // 수동 CS 제어 방식으로 변경
     uint8_t tx_data[5] = { 0x48, 0x00, 0x00, 0x00, 0x00 };
     uint8_t rx_data[5] = { 0 };
@@ -166,6 +166,9 @@ void isd2360_read_id_accurate(void) {
         ESP_LOGI(TAG, "DEV ID      : 0x%02X", rx_data[4]);
     }
 }
+
+
+
 
 void isd2360_spi_init(void) {
     esp_err_t ret;
@@ -216,8 +219,21 @@ void isd2360_spi_init(void) {
     ESP_LOGI(TAG, "SPI Initialized Successfully.");
 }
 
-void isd2360_task(void* arg)
+void isd2360_set(int index)
 {
+    ESP_LOGI(TAG, "큐 전송 시도 -> index = %d", index);
+    BaseType_t xStatus = xQueueSend(isd2360_queue, &index, pdMS_TO_TICKS(100));
+    
+    if (xStatus == pdPASS) {
+        ESP_LOGI(TAG, "큐 전송 완료!");
+    } else {
+        ESP_LOGE(TAG, "큐가 가득 차서 전송 실패 (Timeout)!");
+    }
+}
+
+static void isd2360_task(void* arg)
+{
+    int received_data = 0;
     // 1. 전원 켜기 및 안정화 대기
     ESP_LOGI(TAG, "Powering up ISD2360...");
     ISD3800_PWR_UP();
@@ -236,15 +252,25 @@ void isd2360_task(void* arg)
     //ISD3800_PLAY_VP(5);
 
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(10));
+      if (xQueueReceive(isd2360_queue, &received_data, portMAX_DELAY) == pdPASS) {
+            ESP_LOGW(TAG, "큐 수신 완료! -> [ISD2360] index: %d",received_data);
+            
+            ISD3800_PLAY_VP(received_data);
+        }
     }
 }
+
+
 #define ISD2360_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 void isd2360_taskinit(void) {
     // SPI 초기화만 진행
     isd2360_spi_init();
 
-
+    isd2360_queue = xQueueCreate(10, sizeof(int));
+    if(isd2360_queue == NULL)
+    {
+            ESP_LOGI(TAG, "feed_motor_queue fail ");
+    }
     
     if (xTaskCreatePinnedToCore(
             isd2360_task,                  

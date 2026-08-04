@@ -58,9 +58,9 @@ void Sensor_task(void *pvParameter)
 // 3개 핀 비트마스크 구성 (1ULL << 핀번호)
     uint64_t pin_mask = (1ULL << SLIDING_A_SEN) | 
                         (1ULL << SLIDING_B_SEN) | 
-                        (1ULL << FEED_SEN) | 
-                        (1ULL << IR_OUT1) |
-                        (1ULL << IR_OUT0);
+                        (1ULL << FEED_SEN); //| 
+                       // (1ULL << IR_OUT1) |
+                        //(1ULL << IR_OUT0);
 
     gpio_config_t io_conf = {                   
         .pin_bit_mask = pin_mask,             // 설정할 GPIO 핀 15, 16, 2 지정
@@ -77,11 +77,12 @@ void Sensor_task(void *pvParameter)
         ADC_Sensing();
         #if 1
         #endif
+        vTaskDelay(25 / portTICK_PERIOD_MS);
         VL53L0X_Sensing();
 
         //ESP_LOGI(TAG, "gpio_set_level(IR_OUT0) = %d\r\n",gpio_get_level(IR_OUT0));
         //ESP_LOGI(TAG, "gpio_set_level(IR_OUT1) = %d\r\n",gpio_get_level(IR_OUT1));
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        vTaskDelay(25 / portTICK_PERIOD_MS);
     }
     
 }
@@ -98,9 +99,9 @@ bool sensor_init(void)
     };
     gpio_config(&io_conf);
 
-    //gpio_set_level(IR_ONOFF0, 1);   
+    gpio_set_level(IR_ONOFF0, 1);   
 
-
+    HX711_task_init();
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(
             Sensor_task,                  // 태스크 함수

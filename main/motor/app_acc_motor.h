@@ -3,7 +3,7 @@
 #include <stdbool.h>
 
 void Accum_Set(bool status);
-
-
+void init_acc_motor(void);
+void start_acc_motor_with_boost(int target_percentage, int Motor_motion);
 #endif
 

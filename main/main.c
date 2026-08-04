@@ -75,7 +75,7 @@ void app_main(void)
 
     LED_task_init();
     sensor_init();
-    //opmode_task_init();
+    opmode_task_init();
     Create_Tracker_Capture_Task();
     ble_task_init();
     isd2360_taskinit();

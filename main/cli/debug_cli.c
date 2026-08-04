@@ -119,7 +119,6 @@ BaseType_t prvDebugformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			else if (!strncmp(ag[1], "tracker", 7))
 			{
 				dump_tracker_all_devices();
-
 			}
 					
 			/* There are more parameters to return after this one. */
