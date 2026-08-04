@@ -13,7 +13,7 @@
 #include "aws_iot_task.h"
 #include "driver/rmt_tx.h"
 #include "app_sensor.h"
-
+#include "app_feed_motor.h"
 static const char *TAG = __FILE__;
 
 rmt_channel_handle_t pwm_chan = NULL;
@@ -207,7 +207,7 @@ static void slidmotor_boost_task(void *pvParameters)
                     Motor_enable = false;
                     if(Feed_MoterEn)
                     {
-
+                        start_feed_motor_with_boost(0,MOTOR_FEEDER);
                     }
                 }
             }

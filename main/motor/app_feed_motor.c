@@ -11,7 +11,7 @@
 #include "tx_mqtt.h"
 #include "aws_iot_task.h"
 #include "app_sensor.h"
-
+#include "app_slid_motor.h"
 static const char *TAG = __FILE__;
 
 static QueueHandle_t feed_motor_queue = NULL;
@@ -55,6 +55,14 @@ static void feedmotor_boost_task(void *pvParameters)
     {
         if (xQueueReceive(feed_motor_queue, &received_data, portMAX_DELAY) == pdPASS) {
             ESP_LOGW("RECEIVER", "큐 수신 완료! -> [모터 구동] 속도: %d",received_data);
+            if(Sliding_Back_Enable() == false)
+            {
+                start_slid_motor_with_boost(100,MOTOR_FEEDER);
+            }
+            else
+            {
+                Feeder_CW();
+            }
         }
     }
 }
