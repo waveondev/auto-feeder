@@ -41,29 +41,41 @@ static const ble_uuid128_t nus_tx_uuid  = BLE_UUID128_INIT(BLE_CHR_2_UUID128_ARR
 static uint8_t own_addr_type;
 static uint16_t ble_spp_svc_gatt_notify_val_handle;
 static bool conn_handle_subs[CONFIG_BT_NIMBLE_MAX_CONNECTIONS + 1];
-static esp_timer_handle_t Mac_sending_timer;
 
+static void mac_send_timer_callback(void* arg);
 
 
 extern void ble_store_config_init(void);
 static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg);
 
 static uint16_t current_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-static bool is_phone_connected = false;
 static QueueHandle_t ble_rx_queue = NULL;
 static QueueHandle_t ble_tx_queue = NULL; // 이름을 수신용(rx)에서 송신용(tx) 개념으로
 
 uint16_t g_ble_max_payload = 20; // ble로 최대 보낼 수 있는 Length 저장
 #define BLE_TRX_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 
+// NimBLE 예제에 정의된 주소 출력 함수
+static void print_addr(const void *addr)
+{
+    const uint8_t *u8p = addr;
+    MODLOG_DFLT(INFO, "%02x:%02x:%02x:%02x:%02x:%02x",
+                u8p[5], u8p[4], u8p[3], u8p[2], u8p[1], u8p[0]);
+}
+
 static void ble_spp_server_print_conn_desc(struct ble_gap_conn_desc *desc)
 {
-    MODLOG_DFLT(INFO, "handle=%d our_ota_addr_type=%d our_ota_addr=", desc->conn_handle, desc->our_ota_addr.type);
-    MODLOG_DFLT(INFO, " peer_id_addr_type=%d peer_id_addr=", desc->peer_id_addr.type);
+    MODLOG_DFLT(INFO, "handle=%d our_ota_addr_type=%d our_ota_addr=", 
+                desc->conn_handle, desc->our_ota_addr.type);
+    print_addr(desc->our_ota_addr.val);
+
+    MODLOG_DFLT(INFO, " peer_id_addr_type=%d peer_id_addr=", 
+                desc->peer_id_addr.type);
+    print_addr(desc->peer_id_addr.val);
+
     MODLOG_DFLT(INFO, " encrypted=%d authenticated=%d bonded=%d\n", 
                 desc->sec_state.encrypted, desc->sec_state.authenticated, desc->sec_state.bonded);
 }
-
 /**
  * [추가] 주변 비콘 스캔 시작 함수
  */
@@ -143,9 +155,165 @@ static void ble_spp_server_advertise(void)
     );
 }
 
-/**
- * NimBLE GAP 이벤트 콜백 핸들러 (연결 상태 감시 + [추가] 비콘 스캔 처리)
- */
+
+
+typedef struct {
+    TimerHandle_t xMotionTimer;
+    TimerHandle_t xtimer;
+    uint32_t timer_count;
+    uint16_t conn_handle;
+    uint8_t mac_addr[6];
+    bool is_connected;
+} client_info_t;
+
+client_info_t connected_clients[CONFIG_BT_NIMBLE_MAX_CONNECTIONS];
+static void Tracker_Motion_retry(TimerHandle_t xTimer) {
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        // 타이머 핸들이 일치하고, 현재 해당 기기가 실제로 연결되어 있는지 확인
+        if (connected_clients[i].is_connected && connected_clients[i].xMotionTimer == xTimer) {
+            motion_msg_send(connected_clients[i].conn_handle,MOTION_START_REQUEST,2);
+            break; 
+        }
+    }
+}
+void Motion_Timer_Set(const uint8_t *mac, bool state)
+{
+    if (mac == NULL) return;
+
+    client_info_t *client = NULL;
+
+    // 1. MAC 주소로 해당 클라이언트 검색
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (connected_clients[i].is_connected && 
+            memcmp(connected_clients[i].mac_addr, mac, 6) == 0) {
+            
+            client = &connected_clients[i]; 
+            break; // 찾았으므로 루프 탈출
+        }
+    }
+
+    // 2. 클라이언트를 찾지 못한 경우 방어
+    if (client == NULL) {
+        ESP_LOGW("TIMER", "일치하는 MAC 주소의 클라이언트를 찾을 수 없습니다.");
+        return;
+    }
+
+    // 3. 타이머 객체 존재 여부 확인
+    if (client->xMotionTimer == NULL) {
+        ESP_LOGE("TIMER", "타이머 핸들이 NULL입니다.");
+        return;
+    }
+
+    xTimerStop(client->xMotionTimer, 0);
+
+    if (state == true) {
+        xTimerStart(client->xMotionTimer, 0);
+        ESP_LOGI("TIMER", "Handle %d 클라이언트의 Motion 타이머 시작", client->conn_handle);
+    } else {
+        ESP_LOGI("TIMER", "Handle %d 클라이언트의 Motion 타이머 중지", client->conn_handle);
+    }
+}
+void Tracker_All_Send(uint8_t cmd, uint8_t sub_cmd)
+{
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        // 타이머 핸들이 일치하고, 현재 해당 기기가 실제로 연결되어 있는지 확인
+        if (connected_clients[i].is_connected) {
+            motion_msg_send(connected_clients[i].conn_handle,cmd,sub_cmd);
+            break; 
+        }
+    }
+}
+
+
+static void Tracker_Motion_send(TimerHandle_t xTimer) {
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        // 타이머 핸들이 일치하고, 현재 해당 기기가 실제로 연결되어 있는지 확인
+        if (connected_clients[i].is_connected && connected_clients[i].xtimer == xTimer) {
+            connected_clients[i].timer_count++;
+            uint16_t conn_handle = connected_clients[i].conn_handle;
+            app_config_t* app_config = get_app_config();
+            if(connected_clients[i].timer_count == 3)
+            {
+                motion_msg_send(conn_handle, MOTION_START_REQUEST,1);
+            }
+            if(connected_clients[i].timer_count % app_config->motion_data_time == 0)
+            {
+                motion_msg_send(conn_handle, MOTION_START_REQUEST,1);
+            }
+
+            break; 
+        }
+    }
+}
+// 1. CONNECT 이벤트 발생 시 저장
+void add_client(uint16_t conn_handle, const uint8_t *mac) {
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (!connected_clients[i].is_connected) {
+            connected_clients[i].conn_handle = conn_handle;
+            memcpy(connected_clients[i].mac_addr, mac, 6);
+            connected_clients[i].is_connected = true;
+            connected_clients[i].xtimer = xTimerCreate("adv_delay", pdMS_TO_TICKS(1000), pdTRUE, NULL, Tracker_Motion_send);
+            connected_clients[i].xMotionTimer = xTimerCreate("motion", pdMS_TO_TICKS(1000), pdTRUE, NULL, Tracker_Motion_retry);
+            xTimerStart(connected_clients[i].xtimer, 0);            
+            break;
+        }
+    }
+}
+uint16_t get_conn_handle_by_mac(const uint8_t *mac)
+{
+    if (mac == NULL) {
+        return BLE_HS_CONN_HANDLE_NONE;
+    }
+
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        // 연결된 상태이고 MAC 주소가 6바이트 일치하는지 확인
+        if (connected_clients[i].is_connected && 
+            memcmp(connected_clients[i].mac_addr, mac, 6) == 0) {
+            
+            return connected_clients[i].conn_handle;
+        }
+    }
+
+    // 일치하는 클라이언트를 찾지 못한 경우
+    return BLE_HS_CONN_HANDLE_NONE; // 0xFFFF (NimBLE 유효하지 않은 핸들 정의)
+}
+uint8_t count_client(void)
+{
+    uint8_t active_conn_cnt = 0;
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (connected_clients[i].is_connected) {
+            active_conn_cnt++;
+        }
+    }
+
+    return active_conn_cnt;
+}
+// 2. DISCONNECT 이벤트 발생 시 삭제
+void remove_client(uint16_t conn_handle) {
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (connected_clients[i].is_connected && connected_clients[i].conn_handle == conn_handle) {
+            connected_clients[i].is_connected = false;
+            connected_clients[i].conn_handle = BLE_HS_CONN_HANDLE_NONE;
+            xTimerStop(connected_clients[i].xtimer, 0);
+            xTimerDelete(connected_clients[i].xtimer, 0);
+            xTimerStop(connected_clients[i].xMotionTimer, 0);
+            xTimerDelete(connected_clients[i].xMotionTimer, 0);
+            memset(&connected_clients[i],0,sizeof(connected_clients[i]));
+            break;
+        }
+    }
+}
+
+// 지연 광고 재개 콜백 함수
+static void delay_adv_timer_cb(TimerHandle_t xTimer) {
+    
+    // 현재 활성 연결 수가 최대 연결 수보다 적을 때만 재개
+    if (count_client() < CONFIG_BT_NIMBLE_MAX_CONNECTIONS) {
+        ESP_LOGI("BLE_GAP", "지연 후 광고 재개...");
+        ble_spp_server_advertise(); // 프로젝트의 실제 광고 함수 호출
+    }
+}
+static esp_timer_handle_t Mac_sending_timer;
 static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
 {
     struct ble_gap_conn_desc desc;
@@ -158,34 +326,48 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         MODLOG_DFLT(INFO, "connection %s; status=%d \n",
                     event->connect.status == 0 ? "established" : "failed", event->connect.status);
         ESP_LOGE(TAG, "BLE_GAP_EVENT_CONNECT");
-        is_phone_connected = true;
-        if (esp_timer_is_active(Mac_sending_timer)) {
-            esp_timer_stop(Mac_sending_timer);
-        }
-        ESP_ERROR_CHECK(esp_timer_start_periodic(Mac_sending_timer,    3000000));
 
-        
-        current_conn_handle = event->connect.conn_handle;
-        //MotionSetTimer(is_phone_connected); by.jeon 이 타이머를 왜 돌리는거죠?
-        if (event->connect.status == 0) {
-            if (ble_gap_conn_find(event->connect.conn_handle, &desc) == 0) {
-                ble_spp_server_print_conn_desc(&desc);
-            }
-        } else {
-            // 🔴 중요: 연결 실패(status != 0)일 때는 절대 바로 광고를 켜면 안 됩니다!
-            MODLOG_DFLT(WARN, "Connection failed. Do not restart ADV immediately.\n");
+        if (ble_gap_conn_find(event->connect.conn_handle, &desc) == 0) {
+            ble_spp_server_print_conn_desc(&desc);
         }
+
+
+        // 1. 연결 성공 시 (status == 0)
+        if (event->connect.status == 0) {  
+            current_conn_handle = event->connect.conn_handle;
+            if (esp_timer_is_active(Mac_sending_timer)) {
+                esp_timer_stop(Mac_sending_timer);
+            }
+            ESP_ERROR_CHECK(esp_timer_start_periodic(Mac_sending_timer,    3000000));
+        } 
+        if (event->connect.status == 26) {  
+            if (ble_gap_conn_find(event->connect.conn_handle, &desc) == 0) {
+                // 2. 클라이언트 목록 배열에 추가!
+                add_client(event->connect.conn_handle, desc.peer_ota_addr.val);
+            }
+            ESP_LOGI("BLE_GAP", "현재 연결된 기기 수: %d / %d", 
+                        count_client(), CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
+        } 
+        static TimerHandle_t adv_timer = NULL;
+        if (adv_timer == NULL) {
+            adv_timer = xTimerCreate("adv_delay", pdMS_TO_TICKS(300), pdFALSE, NULL, delay_adv_timer_cb);
+        }
+        xTimerStart(adv_timer, 0);
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
         ESP_LOGE(TAG, "BLE_GAP_EVENT_DISCONNECT");
         MODLOG_DFLT(INFO, "disconnect; reason=%d \n", event->disconnect.reason);
+
+        remove_client(event->disconnect.conn.conn_handle);
         if (esp_timer_is_active(Mac_sending_timer)) {
             esp_timer_stop(Mac_sending_timer);
         }
+        ESP_LOGI("BLE_GAP", "현재 연결된 기기 수: %d / %d", 
+                    count_client(), CONFIG_BT_NIMBLE_MAX_CONNECTIONS);        
         current_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-        is_phone_connected = false;
-        MotionSetTimer(is_phone_connected);
+
+
         if (event->disconnect.conn.conn_handle <= CONFIG_BT_NIMBLE_MAX_CONNECTIONS) {
             conn_handle_subs[event->disconnect.conn.conn_handle] = false;
         }
@@ -396,6 +578,7 @@ static int ble_svc_gatt_handler(uint16_t conn_handle, uint16_t attr_handle, stru
             ble_data_msg_t msg;
 
             // 2. 실제 복사할 데이터 길이 계산 및 구조체 입력
+            msg.conn_handle = conn_handle;
             msg.len = data_len; 
             memcpy(msg.mac,peer_mac,sizeof(msg.mac));
             // 3. ★ 매우 중요: 힙(Heap) 영역에 실제 데이터를 담을 공간 할당!
@@ -523,7 +706,7 @@ void ble_server_send_notify(uint16_t conn_handle, uint8_t *data, uint16_t len)
  * @param len  보낼 데이터의 길이 (바이트 단위)
  * @return true 큐에 성공적으로 진입함, false 큐가 가득 찼거나 비활성화 상태
  */
-bool ble_send_data_to_queue(const uint8_t *data, uint16_t len)
+bool ble_send_data_to_queue(uint16_t* conn_handle, const uint8_t *data, uint16_t len)
 {
     // 1. 안전 장치: 데이터가 없거나 길이가 0인 경우 차단
     if (data == NULL || len == 0) {
@@ -540,8 +723,13 @@ bool ble_send_data_to_queue(const uint8_t *data, uint16_t len)
 
     // 3. 방어 코드: 구조체 배열 크기(512바이트)를 넘지 않도록 길이 제한
     msg.len = len;
-    
+    if(conn_handle == NULL)
+        msg.conn_handle = current_conn_handle;
+    else
+        msg.conn_handle = *conn_handle;
 
+    if(msg.conn_handle == BLE_HS_CONN_HANDLE_NONE)
+        return false;
     // 3. ★ 매우 중요: 힙(Heap) 영역에 실제 데이터를 담을 공간 할당!
     msg.data = (uint8_t *)malloc(msg.len);
     if (msg.data == NULL) {
@@ -580,15 +768,14 @@ static void ble_tx_processing_task(void *pvParameters)
     while (1) {
         // 내가 폰으로 보낼 데이터가 큐에 들어올 때까지 대기
         if (xQueueReceive(ble_tx_queue, &msg, portMAX_DELAY) == pdTRUE) {
-            if (is_phone_connected && current_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-
+             if (msg.conn_handle != BLE_HS_CONN_HANDLE_NONE) {
                 uint16_t offset = 0;
                 while (offset < msg.len) { // MTU 길이만큼 데이터를 나눠서 보낸다.
                     // 이번 턴에 보낼 길이: 남은 길이와 MTU 최대치 중 작은 값
                     uint16_t send_len = (msg.len - offset > g_ble_max_payload) ? g_ble_max_payload : (msg.len - offset);
                     
                     // msg.data의 offset 위치부터 send_len 만큼 잘라서 쏘기
-                    ble_server_send_notify(current_conn_handle, &msg.data[offset], send_len);
+                    ble_server_send_notify(msg.conn_handle, &msg.data[offset], send_len);
                     printf("[TX 태스크] %d 바이트 중 %d 바이트 쪼개서 전송 완료 (offset: %d)\n", msg.len, send_len, offset);
                     
                     offset += send_len;
@@ -605,13 +792,10 @@ static void ble_tx_processing_task(void *pvParameters)
     }
 }
 
-
-
 static void mac_send_timer_callback(void* arg)
 {
     esp_timer_stop(Mac_sending_timer);
     uint8_t mac[6];
-    //uint8_t Str[40];
     char Str[150];
     esp_read_mac(mac,ESP_MAC_WIFI_STA);
     // sprintf((char*)Str, "Wifi MAC %02X%02X%02X%02X%02X%02X", 
@@ -626,10 +810,9 @@ static void mac_send_timer_callback(void* arg)
              CONFIG_HW_REV,                                      // r1.0
              CONFIG_FW_VERSION);                                 // v1.0.0
     printf("send %s ", Str);
-    ble_send_data_to_queue((const uint8_t*)Str, strlen((const char*)Str));
+    ble_send_data_to_queue(NULL, (const uint8_t*)Str, strlen((const char*)Str));
 }
-
-void motion_msg_send(uint8_t cmd,uint8_t sub_cmd)
+void motion_msg_send(uint16_t conn_handle, uint8_t cmd,uint8_t sub_cmd)
 {
     Motion_Packet_t Motion_Packet;
 
@@ -660,7 +843,7 @@ void motion_msg_send(uint8_t cmd,uint8_t sub_cmd)
 
 
 
-    ble_send_data_to_queue((uint8_t*)&Motion_Packet,sizeof(Motion_Packet));
+    ble_send_data_to_queue(&conn_handle, (uint8_t*)&Motion_Packet,sizeof(Motion_Packet));
     // 설정값이 0보다 클 때만 타이머 실행 (안전성 강화)
 }
 #include "esp_bt.h" // 필요한 헤더 포함
@@ -698,13 +881,11 @@ void ble_task_init(void)
 
     ble_store_config_init();
 
-
     const esp_timer_create_args_t mac_sending_timer_args = {
         .callback = &mac_send_timer_callback,
         .name = "mac_sending_timer"
     };
     ESP_ERROR_CHECK(esp_timer_create(&mac_sending_timer_args, &Mac_sending_timer));
-
 
     ble_rx_queue = xQueueCreate(10, sizeof(ble_data_msg_t));
     ble_tx_queue = xQueueCreate(10, sizeof(ble_data_msg_t));

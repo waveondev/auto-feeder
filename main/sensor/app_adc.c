@@ -31,6 +31,9 @@ static bool do_cali_ch6 = false;
 static int ch0_mv = 0;
 static int ch5_mv = 0;
 static int ch6_mv = 0;  
+static int ch0_mv_max = 100;
+static int ch5_mv_max = 100;
+static int ch6_mv_max = 100;  
 adc_continuous_handle_t adc_handle = NULL;
 
 
@@ -134,8 +137,9 @@ void ADC_Sensing(void)
                     if (do_cali_ch0) {
                         adc_cali_raw_to_voltage(cali_ch0_handle, raw, &mv_out);
                         ch0_mv = mv_out;
-                        if (mv_out > 300) {
-                            Accum_Set(false);
+                        if (mv_out > ch0_mv_max) {
+                            ch0_mv_max = mv_out;
+                            ESP_LOGI(TAG, "acc adc %4dmV \r\n", ch0_mv_max);
                         }
                     }
                     
@@ -145,6 +149,10 @@ void ADC_Sensing(void)
                     if (do_cali_ch5) {
                         adc_cali_raw_to_voltage(cali_ch5_handle, raw, &mv_out);
                         ch5_mv = mv_out;
+                        if (mv_out > ch5_mv_max) {
+                            ch5_mv_max = mv_out;
+                            ESP_LOGI(TAG, "slid adc %4dmV \r\n", ch5_mv_max);
+                        }                        
                     }
                 break;
 
@@ -152,8 +160,10 @@ void ADC_Sensing(void)
                     if (do_cali_ch6) {
                         adc_cali_raw_to_voltage(cali_ch6_handle, raw, &mv_out);
                         ch6_mv = mv_out;
-                        if(mv_out > 600)
-                            Feeder_break();   
+                        if (mv_out > ch6_mv_max) {
+                            ch6_mv_max = mv_out;
+                            ESP_LOGI(TAG, "feed adc %4dmV \r\n", ch6_mv_max);
+                        }                                  
                     }
                 break;
 
@@ -166,7 +176,7 @@ void ADC_Sensing(void)
             case ADC_CHANNEL_0: // GPIO 1
                 if (do_cali_ch0) {
                     if(DBG_Resister->adc)
-                        ESP_LOGI(TAG, "GPIO  1 (ADC1) Voltage: %4d mV (%.2f V)\r\n", ch0_mv, (float)ch0_mv / 1000.0f);
+                        ESP_LOGI(TAG, "acc Voltage: %4d mV max = %d\r\n", ch0_mv, ch0_mv_max);
                 }
                 
                 break;
@@ -174,14 +184,14 @@ void ADC_Sensing(void)
             case ADC_CHANNEL_5: // GPIO 6
                 if (do_cali_ch5) {
                     if(DBG_Resister->adc)
-                    ESP_LOGI(TAG, "GPIO  6 (ADC1)  Voltage: %4d mV (%.2f V)\r\n", ch5_mv, (float)ch5_mv / 1000.0f);
+                        ESP_LOGI(TAG, "slid Voltage: %4d mV max = %d\r\n", ch5_mv, ch5_mv_max);
                 }
                 break;
 
             case ADC_CHANNEL_6: // GPIO 7
                 if (do_cali_ch6) {
                     if(DBG_Resister->adc)
-                        ESP_LOGI(TAG, "GPIO  7 (ADC1) Voltage: %4d mV (%.2f V)\r\n", ch6_mv, (float)ch6_mv / 1000.0f);                        
+                        ESP_LOGI(TAG, "feed Voltage: %4d mV max = %d\r\n", ch6_mv, ch6_mv_max);
                 }
                 break;
 

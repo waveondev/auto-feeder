@@ -3,7 +3,6 @@
 #include "esp_log.h"
 
 void MotionTaskInit(void);
-void MotionSetTimer(bool status);
 
 #endif
 

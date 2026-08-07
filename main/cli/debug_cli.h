@@ -16,7 +16,8 @@ typedef struct {
     uint32_t ble         : 1; // 12비트 사용 (0 ~ 4095)
     uint32_t wifi        : 1; // 12비트 사용 (0 ~ 4095)    
     uint32_t led         : 1; // 12비트 사용 (0 ~ 4095)       
-    uint32_t reserved    : 23; // 남은 12비트 (패딩) -> 총합 32비트
+    uint32_t sens        : 1; // 12비트 사용 (0 ~ 4095)           
+    uint32_t reserved    : 22; // 남은 12비트 (패딩) -> 총합 32비트
 } DBG_Resister_t;
 
 DBG_Resister_t* Debug_Get(void);

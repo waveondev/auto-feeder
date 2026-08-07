@@ -191,7 +191,8 @@ esp_err_t hx711_read_average(hx711_t *dev, size_t times, int32_t *data)
     }
 
     *data /= (int32_t)success_count;
-
+    //음수
+    *data = -(*data);
     return ESP_OK;
 }
 

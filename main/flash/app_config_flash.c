@@ -24,7 +24,7 @@ app_config_t app_config =
     .tof_sense_threshold_l = 250,
     .motion_data_time = 1800,
     .dispense_duration = 240,// 토출시간 (분)
-    .dispense_amount_g = 100,// 토출량 (g)
+    .dispense_amount_g = 50,// 토출량 (g)
     .env_mode = "dev"
 };
 
@@ -84,7 +84,7 @@ void reset_all_nvs_data(void)
 
 void dump_all_configurations(void)
 {
-ESP_LOGI(TAG, "==================================================");
+    ESP_LOGI(TAG, "==================================================");
     ESP_LOGI(TAG, "         [SYSTEM CONFIGURATION DUMP]              ");
     ESP_LOGI(TAG, "==================================================");
 

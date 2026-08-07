@@ -110,7 +110,11 @@ BaseType_t prvDebugformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			else if (!strncmp(ag[1], "led", 3))
 			{
                 DBG_Resister.led = atoi(ag[2]) ? 1 : 0;
-            }		
+            }	
+			else if (!strncmp(ag[1], "sens", 4))
+			{
+                DBG_Resister.sens = atoi(ag[2]) ? 1 : 0;
+            }	
 			else if (!strncmp(ag[1], "nvs", 3))
 			{
 				dump_all_configurations();

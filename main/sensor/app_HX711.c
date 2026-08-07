@@ -33,7 +33,7 @@ I (1743551) ./main/app_config_flash.c:   - case_raw_data        : 261253
 #endif
 
 #include "hx711_lib.h"
-static int32_t hx711_data;
+
 static float hx711_data_buf;
 
 hx711_t dev = {
@@ -78,6 +78,7 @@ void HX711_Sensing(void)
     esp_err_t r;
     DBG_Resister_t *DBG_Resister = Debug_Get();
     app_config_t* app_config = get_app_config();
+    int32_t hx711_data = 0;
     if(hx711_cal_enable)
     {
         if(hx711_cal_enable == 1)
@@ -98,7 +99,7 @@ void HX711_Sensing(void)
 
     // 2. float 변수에 대입하여 명확하게 float으로 변환 후 나눗셈
     float net_raw_float = (float)net_raw;
-    hx711_data_buf = net_raw_float / app_config->hx1_scale;
+    hx711_data_buf = (net_raw_float / app_config->hx1_scale);
     if(DBG_Resister->HX711)
     {
             ESP_LOGI(TAG, "hx711_data: (%d)",hx711_data);

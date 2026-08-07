@@ -79,7 +79,7 @@ void Wifi_Connect(const char* target_ssid, const char* target_password)
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi 설정 적용 실패!");
-        ble_send_data_to_queue((uint8_t*)"CONNECT_AP FAIL", strlen("CONNECT_AP FAIL"));
+        ble_send_data_to_queue(NULL, (uint8_t*)"CONNECT_AP FAIL", strlen("CONNECT_AP FAIL"));
         return;
     }
 
@@ -102,13 +102,10 @@ void Wifi_Connect(const char* target_ssid, const char* target_password)
     // 8. 대기 결과에 따른 처리
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "새 AP 연결 최종 성공!");
-        //ble_send_data_to_queue((uint8_t*)"CONNECT_AP SUCCESS", strlen("CONNECT_AP SUCCESS"));
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGE(TAG, "새 AP 연결 실패 (비밀번호 오류 또는 AP 없음)!");
-        //ble_send_data_to_queue((uint8_t*)"CONNECT_AP FAIL", strlen("CONNECT_AP FAIL"));
     } else {
         ESP_LOGE(TAG, "새 AP 연결 타임아웃! (15초 초과)");
-        //ble_send_data_to_queue((uint8_t*)"CONNECT_AP TIMEOUT", strlen("CONNECT_AP TIMEOUT"));
         esp_wifi_disconnect(); // 타임아웃 났으니 연결 시도 중단
     }
 

@@ -132,7 +132,7 @@ void ble_send_encrypted_event(const char* event_type, const char* plain_data) {
     // 5. 전송 큐에 넣기
     printf("[BLE_SEC] 암호화된 ACK 전송: %s\n", event_type);
     printf("[BLE_SEC] 암호화된 전송할 JSON Payload: %s\n", final_json);
-    ble_send_data_to_queue((uint8_t*)final_json, strlen(final_json));
+    ble_send_data_to_queue(NULL,(uint8_t*)final_json, strlen(final_json));
 
     // 6. 메모리 정리
     free(ciphertext);
@@ -195,7 +195,7 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
                             printf("[BLE_SEC] 전송할 JSON Payload: %s\n", ack_buf);
 
                             // 송신 큐를 이용해 앱으로 전송
-                            ble_send_data_to_queue((uint8_t*)ack_buf, strlen(ack_buf));
+                            ble_send_data_to_queue(NULL, (uint8_t*)ack_buf, strlen(ack_buf));
                             printf("[BLE_SEC] Sent Device PubKey & Handshake Complete.\n");
                         }
                     }
@@ -404,35 +404,7 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
 }
 static uint32_t total_count = 0;
 static uint32_t input_count = 0;
-static esp_timer_handle_t Motion_Timeout_timer = NULL;
-// 1초 뒤 타이머가 만료되면 실행될 콜백 함수
-static void Motion_Timeout_callback(void* arg)
-{
-    //ESP_LOGI(TAG, "3초 동안 추가 입력이 없어 현재 모드로 확정합니다: %d", current_opmode);
 
-    motion_msg_send(MOTION_START_REQUEST,2);
-    // TODO: 여기에 모드가 최종 확정되었을 때 실행할 동작(예: 화면 갱신, 실제 하드웨어 제어 등)을 넣으세요.
-}
-void Motion_Timer_Set(bool state)
-{
-                // 2. 타이머가 처음 호출된 거라면 타이머를 생성
-    if (Motion_Timeout_timer == NULL) {
-        const esp_timer_create_args_t timer_args = {
-            .callback = &Motion_Timeout_callback,
-            .name = "opmode_delay_timer"
-        };
-        esp_timer_create(&timer_args, &Motion_Timeout_timer);
-    }
-
-    // 💡 이미 타이머가 존재한다는 뜻은, 이전에 버튼을 누른 적이 있다는 것!
-    // 즉, 1초 이내에 다시 들어왔을 확률이 높으므로 기존 타이머를 멈춤.
-    if (esp_timer_is_active(Motion_Timeout_timer)) {
-        esp_timer_stop(Motion_Timeout_timer);
-    }
-    
-    if(state == true)
-        esp_timer_start_once(Motion_Timeout_timer, 5000000);
-}
 static pack_data* data_buffer;
 void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
 {
@@ -462,7 +434,7 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                     if(data_buffer == NULL)
                         break;
                     
-                    Motion_Timer_Set(true);
+                    Motion_Timer_Set(mac, true);
                     tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,0,NULL);
             }
 
@@ -510,15 +482,16 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
             
             if(input_count >= total_count)
             {
-                Motion_Timer_Set(false);
+                Motion_Timer_Set(mac, false);
                 tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,total_count,data_buffer);
                 data_buffer = NULL;
                 input_count = 0;
-                total_count = 0;                
-               // motion_msg_send(MOTION_DATA_ACK,Motion_Packet->motion_data.seq);
+                total_count = 0;    
+                         
+                motion_msg_send(get_conn_handle_by_mac(mac),MOTION_DATA_ACK,Motion_Packet->motion_data.seq);
             }
             else
-                Motion_Timer_Set(true);
+                Motion_Timer_Set(mac, true);
         break;
         case HEALTH_DATA_RESPONSE:
                     // event_code 및 health_data_res 내부 구조체 포인터

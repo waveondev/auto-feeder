@@ -15,6 +15,15 @@ typedef enum{
     MOTOR_COAST,
     MOTOR_BREAK,      
 }Slid_Moter_e;
-bool start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motion);
+typedef enum 
+{
+    SLID_OPEN = 0,
+    SLID_OPENING,
+    SLID_CLOSING,
+    SLID_CLOSE,
+} Slid_state_e;
+
+Slid_state_e Slide_get_state(void);
+
 #endif
 

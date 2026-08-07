@@ -7,7 +7,7 @@ void Feeder_CW(void);
 void Feeder_CCW(void);
 void Feeder_break(void);
 void Feeder_coast(void);
-void start_feed_motor_with_boost(int target_percentage, int Motor_motion);
+
 void init_feed_motor(void) ;
 
 #endif

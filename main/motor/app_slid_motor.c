@@ -15,6 +15,7 @@
 #include "app_sensor.h"
 #include "app_feed_motor.h"
 #include "app_acc_motor.h"
+#include "app_adc.h"
 static const char *TAG = __FILE__;
 
 rmt_channel_handle_t pwm_chan = NULL;
@@ -32,9 +33,14 @@ typedef struct {
     Slid_Moter_e Motor_Motion; 
 } slid_motor_boost_args_t;
 
-
+static bool start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motion);
 static QueueHandle_t slid_motor_queue = NULL;
+static Slid_state_e Slid_State = SLID_CLOSE;
 
+Slid_state_e Slide_get_state(void)
+{
+    return Slid_State;
+}
 // 모터 제어 함수 (percentage: 0 ~ 100)
 void set_slid_motor_speed_percent(int percentage, bool CW) {
     static rmt_symbol_word_t pwm_symbol;
@@ -91,7 +97,7 @@ void set_slid_motor_speed_percent(int percentage, bool CW) {
 
 static bool Motor_CW = false;    
 static bool Motor_enable = false;
-static bool feeder_enable = false;
+
 void Sliding_CW(int speed)
 {
     if(Sliding_Front_Enable())
@@ -99,7 +105,7 @@ void Sliding_CW(int speed)
         ESP_LOGW(TAG, "FRONT MAX");        
         return;
     }
-    if(Motor_enable && Motor_CW == false)
+    if(Motor_enable && Motor_CW == true)
     {
         //ESP_LOGW(TAG, "Motor_enable");    
         return;
@@ -113,7 +119,7 @@ void Sliding_CCW(int speed)
         ESP_LOGW(TAG, "BACK MAX");        
         return;
     }
-    if(Motor_enable && Motor_CW == true)
+    if(Motor_enable && Motor_CW == false)
     {
        // ESP_LOGW(TAG, "Motor_enable");    
         return;
@@ -131,7 +137,7 @@ void Sliding_break(void)
     start_slid_motor_with_boost(0,MOTOR_BREAK);
 }
 
-bool start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motion)
+static bool start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motion)
 {
     slid_motor_boost_args_t send_data;
 
@@ -152,46 +158,72 @@ bool start_slid_motor_with_boost(int target_percentage, Slid_Moter_e Motor_motio
     
 }
 
+#if 0
+
+typedef enum 
+{
+    SLID_OPEN = 0,
+    SLID_OPENING,
+    SLID_CLOSING,
+    SLID_CLOSE,
+} Slid_state_e;
+
+
+#endif
 
 static void slidmotor_boost_task(void *pvParameters)
 {
     slid_motor_boost_args_t received_data;
+    if(Sliding_Back_Enable())
+        Sliding_CCW(100);
     while(1)
     {
-        if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(1)) == pdPASS) {
+        if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
             ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", 
                      received_data.target_percentage, received_data.Motor_Motion);
+            int target_percentage = received_data.target_percentage;
 
             switch(received_data.Motor_Motion)
             {
                 case MOTOR_CW:
-                    Motor_CW = false;   
-                    Motor_enable = true;
+                    Motor_CW = true;    
+                    Motor_enable = true;    
+                    Slid_State = SLID_OPENING;
                 break;
                 case MOTOR_CCW:
-                    Motor_CW = true;    
-                    Motor_enable = true;                            
+                    Motor_CW = false;   
+                    Motor_enable = true;  
+                    Slid_State = SLID_CLOSING;
                 break;
                 case MOTOR_COAST:
-                    received_data.target_percentage = 0;
+                    target_percentage = 0;
                     Motor_CW = true;    
                     Motor_enable = false;            
                 break;
                 case MOTOR_BREAK:
-                    received_data.target_percentage = 0;
+                    target_percentage = 0;
                     Motor_CW = false;
                     Motor_enable = false;            
                 break;                                                                
             }
             
-            set_slid_motor_speed_percent(received_data.target_percentage, Motor_CW);
+            set_slid_motor_speed_percent(target_percentage, Motor_CW);
         }
         if(Motor_enable == true)
         {
-            if(Motor_CW == false)
+            if(GetSlid_ADC() > 500)
+            {
+                set_slid_motor_speed_percent(0, true);
+                vTaskDelay(500);
+                set_slid_motor_speed_percent(received_data.target_percentage, !Motor_CW);
+                vTaskDelay(500);
+                set_slid_motor_speed_percent(received_data.target_percentage, Motor_CW);
+            }            
+            if(Motor_CW == true)
             {
                 if(Sliding_Front_Enable())
                 {
+                    Slid_State = SLID_OPEN;
                     Sliding_coast();
                     Motor_enable = false;
                 }
@@ -201,6 +233,7 @@ static void slidmotor_boost_task(void *pvParameters)
                 if(Sliding_Back_Enable())
                 {
                     Sliding_coast();
+                    Slid_State = SLID_CLOSE;
                     Motor_enable = false;
                 }  
             }
@@ -213,6 +246,7 @@ static void slidmotor_boost_task(void *pvParameters)
 void init_motor_ledc(void) {
 // 3개 핀 비트마스크 구성 (1ULL << 핀번호)
     uint64_t pin_mask = (1ULL << SLIDING_PWM_CW) ; 
+
 
 
     gpio_config_t io_conf = {
@@ -264,7 +298,7 @@ void init_motor_ledc(void) {
         ESP_LOGE(TAG, "Error creating slidmotor_boost_task on Core 1");
     }
     #endif
-    Sliding_break();
+
     init_feed_motor();
     init_acc_motor();
 }

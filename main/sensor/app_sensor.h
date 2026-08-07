@@ -8,7 +8,8 @@ bool sensor_init(void);
 
 bool Sliding_Back_Enable(void);
 bool Sliding_Front_Enable(void);
-bool IROUT1_Detected_State(void);
-bool IROUT0_Detected_State(void);
+bool Feed_Front_Enable(void);
+bool Food_Door_Detected_State(void);
+bool Food_Detected_State(void);
 #endif
 

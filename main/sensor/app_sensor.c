@@ -13,6 +13,7 @@
 #include "app_adc.h"
 #include "app_led.h"
 #include "gpio_util.h"
+#include "debug_cli.h"
 #define SENSOR_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 #define TASK_DELAY_MS(x) (x/portTICK_PERIOD_MS)
 static const char *TAG = __FILE__;
@@ -29,14 +30,26 @@ bool Sliding_Front_Enable(void)
 {
     return gpio_get_level(SLIDING_B_SEN) == 1 ? true: false;
 }
-bool IROUT1_Detected_State(void)
+bool Feed_Front_Enable(void)
 {
-    return gpio_get_level(IR_OUT1) == 0 ? true: false;
+    return gpio_get_level(FEED_SEN) == 1 ? true: false;
+}
+bool Food_Door_Detected_State(void)
+{
+    gpio_set_level(IR_ONOFF1, 1);   
+    vTaskDelay(1);
+    bool ret = gpio_get_level(IR_OUT1) == 1 ? false : true;
+    gpio_set_level(IR_ONOFF1, 0);   
+    return ret;
 }
 
-bool IROUT0_Detected_State(void)
+bool Food_Detected_State(void)
 {
-    return gpio_get_level(IR_OUT0) == 0 ? true: false;
+    gpio_set_level(IR_ONOFF0, 1);   
+    vTaskDelay(1);
+    bool ret = gpio_get_level(IR_OUT0) == 1 ? true : false;
+    gpio_set_level(IR_ONOFF0, 0);   
+    return ret;
 }
 void Sensor_task(void *pvParameter)
 {
@@ -58,9 +71,9 @@ void Sensor_task(void *pvParameter)
 // 3개 핀 비트마스크 구성 (1ULL << 핀번호)
     uint64_t pin_mask = (1ULL << SLIDING_A_SEN) | 
                         (1ULL << SLIDING_B_SEN) | 
-                        (1ULL << FEED_SEN); //| 
-                       // (1ULL << IR_OUT1) |
-                        //(1ULL << IR_OUT0);
+                        (1ULL << FEED_SEN) | 
+                        (1ULL << IR_OUT1) |
+                        (1ULL << IR_OUT0);
 
     gpio_config_t io_conf = {                   
         .pin_bit_mask = pin_mask,             // 설정할 GPIO 핀 15, 16, 2 지정
@@ -72,16 +85,29 @@ void Sensor_task(void *pvParameter)
     gpio_config(&io_conf);
 
 
-
+    int i=0;
+    DBG_Resister_t* DBG_Resister = Debug_Get();
     while (1) {
         ADC_Sensing();
         #if 1
         #endif
         vTaskDelay(25 / portTICK_PERIOD_MS);
         VL53L0X_Sensing();
+        #if 1
+        if(Food_Detected_State())
+            led_bit_enable(FOOD_EMPTY_BIT);
+        else
+            led_bit_disable(FOOD_EMPTY_BIT);             
+        #endif
+        if(DBG_Resister->sens)
+        {
+            ESP_LOGI(TAG, "IR_OUT0 = %d\r\n",Food_Detected_State()?1:0);
+            ESP_LOGI(TAG, "IR_OUT1 = %d\r\n",Food_Door_Detected_State()?1:0);
+            ESP_LOGI(TAG, "SLI_B = %d\r\n",Sliding_Back_Enable()?1:0);
+            ESP_LOGI(TAG, "SLI_F = %d\r\n",Sliding_Front_Enable()?1:0);
+            ESP_LOGI(TAG, "FEED = %d\r\n",Feed_Front_Enable()?1:0);
+        }    
 
-        //ESP_LOGI(TAG, "gpio_set_level(IR_OUT0) = %d\r\n",gpio_get_level(IR_OUT0));
-        //ESP_LOGI(TAG, "gpio_set_level(IR_OUT1) = %d\r\n",gpio_get_level(IR_OUT1));
         vTaskDelay(25 / portTICK_PERIOD_MS);
     }
     
@@ -91,16 +117,16 @@ bool sensor_init(void)
 {
 
     gpio_config_t io_conf = {                   
-        .pin_bit_mask = (1ULL << IR_ONOFF0),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .pin_bit_mask = (1ULL << IR_ONOFF0) | (1ULL << IR_ONOFF1),             // 설정할 GPIO 핀 15, 16, 2 지정
         .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
         .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
-        .pull_down_en = GPIO_PULLDOWN_ENABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
         .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
     };
     gpio_config(&io_conf);
 
-    gpio_set_level(IR_ONOFF0, 1);   
-
+    gpio_set_level(IR_ONOFF0, 0);   
+    gpio_set_level(IR_ONOFF1, 0);   
     HX711_task_init();
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(

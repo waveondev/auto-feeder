@@ -12,6 +12,7 @@
 #include "wifi_task.h"
 #include "ble_task.h"
 #include "app_led.h"
+#include "app_slid_motor.h"
 static const char *TAG = "BUTTON_CTRL";
 #define BUTTON_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 
@@ -22,6 +23,7 @@ static const char *TAG = "BUTTON_CTRL";
 #define LONG_PRESS_5S_MS      5000
 #define LONG_PRESS_10S_MS     10000
 
+static bool button_lock = false;
 // 이벤트 종류 정의
 typedef enum {
     EV_SHORT_CLICK,
@@ -52,48 +54,67 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 }
 
 void bf_SingleClickAction(void) {
-    Opmode_Set();
+    //Opmode_Set();
+    if(button_lock == true)
+    {
+
+    }
+    else
+    {
+        feeder_mode_init();
+    }
     ESP_LOGI(TAG,"Single Click Action executed \r\n");
 }
 
 void bf_DoubleClickAction(void) {
     app_config_t* app_config = get_app_config();
+    Clean_mode_set();
     ESP_LOGI(TAG,"Double Click Action executed\r\n");
 }
 
 void bf_LongPress3SecAction(void) {
-   
+    if(button_lock == true)
+        return;
     ESP_LOGI(TAG,"Long Press 3 Sec Action executed\r\n");
 }
 
 void bf_LongPress5SecAction(void) {
+    if(button_lock == true)
+        return;    
     ESP_LOGI(TAG,"Long Press 5 Sec Action executed \r\n");
     Wifi_Disconnect();
      wifi_scan_start();
 }
 
 void bf_LongPress10SecAction(void) {
+    if(button_lock == true)
+        return;
     ESP_LOGI(TAG,"Long Press 10 Sec Action executed \r\n");
+    button_lock = !button_lock;
     //delay(1000); 
     //ESP.restart();
 }
 int button_press_state(void)
 {
-    if(is_pressed == true)
+    if(button_lock == false)
     {
-        int64_t now = esp_timer_get_time() / 1000; // 현재 시간 (ms)
-        int64_t press_duration = now - pressed_time; // 누르고 있던 총 시간 계산
+        if(is_pressed == true)
+        {
+            int64_t now = esp_timer_get_time() / 1000; // 현재 시간 (ms)
+            int64_t press_duration = now - pressed_time; // 누르고 있던 총 시간 계산
 
-        if (press_duration >= LONG_PRESS_10S_MS) {
-            return 3;
-        } 
-        else if (press_duration >= LONG_PRESS_5S_MS) {
-            return 2;
-        } 
-        else if (press_duration >= LONG_PRESS_3S_MS) {
-            return 1;
-        } 
+            if (press_duration >= LONG_PRESS_10S_MS) {
+                return 3;
+            } 
+            else if (press_duration >= LONG_PRESS_5S_MS) {
+                return 2;
+            } 
+            else if (press_duration >= LONG_PRESS_3S_MS) {
+                return 1;
+            } 
+        }
     }
+
     return 0;
 }
 // 버튼 상태 및 타이머를 처리하는 메인 태스크

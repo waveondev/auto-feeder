@@ -232,27 +232,6 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 }
 
 
-
-
-
-
-
-static bool Motion_Send_enable = false;
-static int Motion_Send_tick = 50;
-
-
-
-void MotionSetTimer(bool status)
-{
-    if(Motion_Send_enable != status)
-    {
-        Motion_Send_enable = status;
-    }
-    if(Motion_Send_enable)
-    {
-        Motion_Send_tick = 50;
-    }
-}
 bool GetTracker_Id_active(void)
 {
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
@@ -279,23 +258,9 @@ void vTrackerCaptureTask(void *pvParameters)
     xLastWakeTime = xTaskGetTickCount();
 
     printf("[태스크] tracker_capture 태스크가 시작되었습니다. (주기: 100ms)\n");
-    app_config_t* app_config = get_app_config();
     for (;;)
     {
-        /*-----------------------------------------------------------------*/
-        /* 🎯 여기에 100ms마다 실행할 캡처 및 처리 로직을 작성하세요.       */
-        /* 예: 센서 데이터 읽기, Tracker 상태 업데이트 등                  */
-        /*-----------------------------------------------------------------*/
-        // printf("[캡처] 데이터를 캡처하는 중...\n"); 
-        if(Motion_Send_enable)
-        {
-            Motion_Send_tick--;
-            if(Motion_Send_tick <= 0)
-            {
-                Motion_Send_tick = (app_config->motion_data_time) * 10;
-                motion_msg_send(MOTION_START_REQUEST,1);
-            }
-        }
+
         for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
             if(Sliding_Front_Enable())
             {      

@@ -2,8 +2,8 @@
 #include "led_strip.h"
 #include "gpio_util.h"
 #define LED_NUMBERS  6   // 연결된 네오픽셀 LED 총 개수 (예: 3개)
-#define LED_BRIGHTNESS_MAX    180
-#define LED_BRIGHTNESS_CENTER 100
+#define LED_BRIGHTNESS_MAX    255
+
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,18 +21,16 @@ static const char *TAG = __FILE__;
 
 static uint16_t led_status_resister = 0;
 static int last_op_mode = -1; 
-static int wifi_conn_enable = 0;
+static bool wifi_conn_enable = false;
 #define LED_TASK_DELAY 10
+static uint8_t LED_brightness_value = LED_BRIGHTNESS_MAX;
+
 typedef struct {
     uint8_t used;
     int8_t step;             // 밝기가 변화하는 공통 속도/스텝 수 (예: 5)
     
-    // 각 채널의 현재 밝기 (Red는 0부터 시작, Blue는 255부터 시작)
-    int16_t current_r;
-    int16_t current_g;
-    int16_t current_b;
-    int16_t current_w;
-
+    uint8_t min_brightness;
+    uint8_t max_brightness;
     // 목표하는 최대 색상 (상한선 기준값)
     uint8_t target_r;
     uint8_t target_g;
@@ -42,6 +40,13 @@ typedef struct {
 } Breathing_Setting_t;
 
 static Breathing_Setting_t Breathing_Setting;
+
+void LED_Bright_Set(uint8_t value)
+{
+    LED_brightness_value = value;
+}
+
+
 bool TOF_enable(void)
 {
     return (led_status_resister & TOF_DETECT_BIT);
@@ -62,9 +67,22 @@ bool pairing_enable(void)
 {
     return (led_status_resister & PAIRING_BIT);
 }
+bool food_empty_enable(void)
+{
+    return (led_status_resister & FOOD_EMPTY_BIT);
+}
+bool food_discharge_enable(void)
+{
+    return (led_status_resister & FOOD_DISCHARGE_BIT);
+}
+bool lock_mode_enable(void)
+{
+    return (led_status_resister & LOCK_MODE_BIT);
+}
+
 void wifi_connect_success(void)
 {
-    wifi_conn_enable = 100;
+    wifi_conn_enable = true;
 }
 bool led_bit_status(uint16_t status)
 {
@@ -82,7 +100,7 @@ void led_bit_enable(uint16_t enable)
     if ((led_status_resister & enable) == 0) 
     {
         led_status_resister |= enable;
-        memset(&Breathing_Setting,0,sizeof(Breathing_Setting));
+        //memset(&Breathing_Setting,0,sizeof(Breathing_Setting));
         ESP_LOGE(TAG, "led_status_resister = %08x",led_status_resister);
     }
 }
@@ -93,7 +111,7 @@ void led_bit_disable(uint16_t disable)
     if ((led_status_resister & disable) != 0) 
     {
         led_status_resister &= (~disable);
-        memset(&Breathing_Setting,0,sizeof(Breathing_Setting));
+        //memset(&Breathing_Setting,0,sizeof(Breathing_Setting));
         ESP_LOGE(TAG, "led_status_resister = %08x",led_status_resister);
     }
 }
@@ -150,32 +168,22 @@ void set_rgb_led(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
 
     led_strip_refresh(led_strip); 
 }
+void set_rgb_len_no_Breathing(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
+{
+    if(Breathing_Setting.used)
+        memset(&Breathing_Setting, 0, sizeof(Breathing_Setting_t));
+    set_rgb_led(R, G, B, W);
+}
 
 void app_tof_sensor_poll_100ms(void)
 {
-    static uint32_t tof_match_start_time = 0;
-    static bool is_tof_pressing = false;
-
     if (VL53L0X_Detect()) 
     {
-
-        is_tof_pressing = false;
-        tof_match_start_time = 0;
         led_bit_enable(TOF_DETECT_BIT); 
     } 
     else 
     {
         led_bit_disable(TOF_DETECT_BIT); // ⭐️ 손 치우면 즉시 꺼짐 호출
-        if (!is_tof_pressing) {
-            tof_match_start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-            is_tof_pressing = true;
-        } else {
-            uint32_t elapsed_time = (xTaskGetTickCount() * portTICK_PERIOD_MS) - tof_match_start_time;
-            if (elapsed_time >= 3000) {
-                // ⭐️ 3초 만족 시 호출 -> 내부 가드 덕분에 매번 호출해도 세마포어는 딱 1번만 방출됨!
-               
-            }
-        }
     }
     app_config_t* app_config = get_app_config();
     if(last_op_mode != app_config->op_mode && led_status_resister == 0)
@@ -185,14 +193,9 @@ void app_tof_sensor_poll_100ms(void)
     }
 }
 
-
-static void Breathing_Setup(uint8_t enable, uint8_t step, 
-                            int16_t current_r,
-                            int16_t current_g,
-                            int16_t current_b,
-                            int16_t current_w,
-
-                            // 목표하는 최대 색상 (상한선 기준값)
+void Breathing_Setup(uint8_t enable, uint8_t step, 
+                            uint8_t min_bright,  // 💡 최소 밝기 (0~255)
+                            uint8_t max_bright,  // 💡 최대 밝기 (0~255)
                             uint8_t target_r,
                             uint8_t target_g,
                             uint8_t target_b,
@@ -201,62 +204,97 @@ static void Breathing_Setup(uint8_t enable, uint8_t step,
     if(Breathing_Setting.used)
         return;
 
-    memset(&Breathing_Setting, 0,sizeof(Breathing_Setting_t));
+    memset(&Breathing_Setting, 0, sizeof(Breathing_Setting_t));
     Breathing_Setting.used = enable;
     Breathing_Setting.step = step;
-    Breathing_Setting.current_r = current_r;
-    Breathing_Setting.current_g = current_g;
-    Breathing_Setting.current_b = current_b;
-    Breathing_Setting.current_w = current_w;
+    
+    // 밝기 하한선/상한선 설정
+    Breathing_Setting.min_brightness = min_bright;
+    Breathing_Setting.max_brightness = max_bright;
+    
+    // 초기 시작 밝기를 min_brightness로 지정
+    Breathing_Setting.brightness = min_bright;
+
     Breathing_Setting.target_r = target_r;
     Breathing_Setting.target_g = target_g;
     Breathing_Setting.target_b = target_b;    
     Breathing_Setting.target_w = target_w;   
-
 }
+
+void Breathing_Setup_Debug(uint8_t enable, uint8_t step, 
+                            uint8_t min_bright,  // 💡 최소 밝기 (0~255)
+                            uint8_t max_bright,  // 💡 최대 밝기 (0~255)
+                            uint8_t target_r,
+                            uint8_t target_g,
+                            uint8_t target_b,
+                            uint8_t target_w)
+{
+
+
+    memset(&Breathing_Setting, 0, sizeof(Breathing_Setting_t));
+    Breathing_Setting.used = enable;
+    Breathing_Setting.step = step;
+    
+    // 밝기 하한선/상한선 설정
+    Breathing_Setting.min_brightness = min_bright;
+    Breathing_Setting.max_brightness = max_bright;
+    
+    // 초기 시작 밝기를 min_brightness로 지정
+    Breathing_Setting.brightness = min_bright;
+
+    Breathing_Setting.target_r = target_r;
+    Breathing_Setting.target_g = target_g;
+    Breathing_Setting.target_b = target_b;    
+    Breathing_Setting.target_w = target_w;   
+}
+
 static void Breathing_LED(void)
 {
-    if(Breathing_Setting.used == 0)
+    if (Breathing_Setting.used == 0)
         return;
 
-    // 1. 제어 축 경계 제한
-    if (Breathing_Setting.brightness > 255) Breathing_Setting.brightness = 255;
-    if (Breathing_Setting.brightness < 0)   Breathing_Setting.brightness = 0;
+    // 1. 설정된 min ~ max 범위로 경계 제한
+    if (Breathing_Setting.brightness > Breathing_Setting.max_brightness) 
+        Breathing_Setting.brightness = Breathing_Setting.max_brightness;
+    if (Breathing_Setting.brightness < Breathing_Setting.min_brightness) 
+        Breathing_Setting.brightness = Breathing_Setting.min_brightness;
 
-// 2. 두 가지 비율 준비
-    float forward = (float)Breathing_Setting.brightness / 255.0f; // 0.0 -> 1.0
-    float backward = 1.0f - forward;                             // 1.0 -> 0.0
+    // 2. 현재 밝기를 [0.0 ~ 1.0] 비율로 정규화
+    float scale = (float)Breathing_Setting.brightness / 255.0f;
 
-    // 3. ✨ [핵심 리팩토링] 시작 값이 255(최대)면 역방향비율을, 아니면 정방향비율을 곱함
-    uint8_t r = (uint8_t)(Breathing_Setting.target_r * (Breathing_Setting.current_r >= 255 ? backward : forward));
-    uint8_t g = (uint8_t)(Breathing_Setting.target_g * (Breathing_Setting.current_r >= 255 ? backward : forward));
-    uint8_t b = (uint8_t)(Breathing_Setting.target_b * (Breathing_Setting.current_b >= 255 ? backward : forward));
-    uint8_t w = (uint8_t)(Breathing_Setting.target_w * (Breathing_Setting.current_w >= 255 ? backward : forward));
+    // 3. 목표 색상에 비율 적용
+    uint8_t r = (uint8_t)(Breathing_Setting.target_r * scale);
+    uint8_t g = (uint8_t)(Breathing_Setting.target_g * scale);
+    uint8_t b = (uint8_t)(Breathing_Setting.target_b * scale);
+    uint8_t w = (uint8_t)(Breathing_Setting.target_w * scale);
+
     // 물리 LED에 반영
-    // 물리 LED에 계산된 최종 값 반영
     set_rgb_led(r, g, b, w);
 
-    // 4. 타이밍 및 스텝 증감 제어
+    // 4. 홀드 타임 처리
     static int hold_count = 0;
     if (hold_count > 0) {
         hold_count--;
         return;
     }
 
+    // 5. 밝기 증감
     Breathing_Setting.brightness += Breathing_Setting.step;
 
-    // step이 2든 5든 오버슛 걱정 없이 확실하게 반전되는 로직
-    if (Breathing_Setting.brightness >= 255 && Breathing_Setting.step > 0) {
-        Breathing_Setting.brightness = 255;
+    // 6. 설정한 max_brightness / min_brightness에서 방향 반전
+    if (Breathing_Setting.brightness >= Breathing_Setting.max_brightness && Breathing_Setting.step > 0) {
+        Breathing_Setting.brightness = Breathing_Setting.max_brightness;
         Breathing_Setting.step = -Breathing_Setting.step; // 부호 반전
         hold_count = 10;
     } 
-    else if (Breathing_Setting.brightness <= 0 && Breathing_Setting.step < 0) {
-        Breathing_Setting.brightness = 0;
+    else if (Breathing_Setting.brightness <= Breathing_Setting.min_brightness && Breathing_Setting.step < 0) {
+        Breathing_Setting.brightness = Breathing_Setting.min_brightness;
         Breathing_Setting.step = -Breathing_Setting.step; // 부호 반전
         hold_count = 10;
     }
 }
+
+
 static void LED_task(void *pvParameter)
 {
 
@@ -264,22 +302,14 @@ static void LED_task(void *pvParameter)
     
     uint8_t toggle_time = 0;
     bool toggle_flag = false;
-    static uint32_t _100ms_count = 0;
 
     init_led_strip();
-    set_rgb_led(0,0,0,LED_BRIGHTNESS_MAX);
+    set_rgb_len_no_Breathing(0,0,0,LED_BRIGHTNESS_MAX);
     vTaskDelay(pdMS_TO_TICKS(5000));
     ESP_LOGI(TAG, "Starting LED_task (Pure Event Driven Mode)");
     DBG_Resister_t *DBG_Resister = Debug_Get();
     while (1) {
-        if(_100ms_count >= (100 / LED_TASK_DELAY))
-        {
-            _100ms_count = 0 ;
-            app_tof_sensor_poll_100ms();
-        }
-        else
-            _100ms_count++;
-        
+        app_tof_sensor_poll_100ms();
    
         if(DBG_Resister->led)
         {
@@ -291,31 +321,45 @@ static void LED_task(void *pvParameter)
             if (led_status_resister != 0) {
                 last_op_mode = -1; // 모드 무효화
                 #if 1
-                if((led_status_resister & HARDWARE_ERR_BIT) || (led_status_resister & SENSE_ERR_BIT))
+                if(hardware_error_enable() || sense_enable())
                 {
-                    set_rgb_led(LED_BRIGHTNESS_MAX,0 , 0, 0); 
+                    set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
                 }
                 else 
                 #endif
-                if (led_status_resister & PAIRING_BIT) {
-                    //Breathing_Setup(1,2,0,0,255,0,255,0,255,0);
-                    Breathing_Setup(1,2,0,0,255,0,0,0,255,0);
+                if(food_empty_enable())
+                {
+                    set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
+                }
+                else if(lock_mode_enable())
+                {
+                    for(int count = 0; count >=2; count++)
+                    {
+                        set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
+                        vTaskDelay(250);
+                        set_rgb_len_no_Breathing(0 ,0, 0, 0); 
+                        vTaskDelay(250);
+                    }
+                }
+                else if (pairing_enable()) {
+                    Breathing_Setup(1,2,0,LED_brightness_value,0,0,255,0);
                     Breathing_LED();
                 }
-                else if (led_status_resister & OTA_START_BIT) {
-                    Breathing_Setup(1,2,0,0,255,0,255,0,255,0);
+                else if (ota_enable()) {
+                    Breathing_Setup(1,2,0,LED_brightness_value,255,0,255,0);
                     Breathing_LED();
                 }                  
-                else if (led_status_resister & TOF_DETECT_BIT){
-                    set_rgb_led(0, LED_BRIGHTNESS_MAX, 0, 0); 
+                else if (TOF_enable()){
+                    set_rgb_len_no_Breathing(0, LED_brightness_value, 0, 0); 
                 }         
             }
             // [우선순위 2] 비트가 다 꺼진 정상 상태라면 op_mode 적용
             else {
-                if(wifi_conn_enable)
+                if(wifi_conn_enable == true)
                 {
-                    wifi_conn_enable--;
-                    set_rgb_led(0, LED_BRIGHTNESS_MAX, 0, 0); 
+                    wifi_conn_enable = false;
+                    set_rgb_len_no_Breathing(0, LED_brightness_value, 0, 0); 
+                    vTaskDelay(1000);
                 }
                 else
                 {
@@ -323,19 +367,19 @@ static void LED_task(void *pvParameter)
                     if(button_state)
                     {
                         switch(button_state) {
-                            case 1: set_rgb_led(0, LED_BRIGHTNESS_MAX, 0, 0); break;
-                            case 2:  set_rgb_led(0, 0, LED_BRIGHTNESS_MAX, 0);; break;
-                            case 3:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX);; break;
+                            case 1: set_rgb_len_no_Breathing(0, LED_brightness_value, 0, 0); break;
+                            case 2:  set_rgb_len_no_Breathing(0, 0, LED_brightness_value, 0);; break;
+                            case 3:  set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value);; break;
                             default: break;
                         }
                     }
                     else
                     {
                         switch(last_op_mode) {
-                            case FEED_MODE_SCHEDULED_PORTION: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
-                            case FEED_MODE_MANUAL_PORTION:  set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX/2); break;
-                            case FEED_MODE_FREE_FEEDING:  set_rgb_led(0,0 , LED_BRIGHTNESS_MAX, 0); break;
-                            default: set_rgb_led(0, 0, 0, LED_BRIGHTNESS_MAX); break;
+                            case FEED_MODE_SCHEDULED_PORTION: set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
+                            case FEED_MODE_MANUAL_PORTION:  set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
+                            case FEED_MODE_FREE_FEEDING:  set_rgb_len_no_Breathing(0,0 , LED_brightness_value, 0); break;
+                            default: set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
                         }
                     }
 
@@ -369,7 +413,7 @@ void LED_task_init(void)
 
     // GPIO 설정 적용
     ESP_ERROR_CHECK(gpio_config(&io_conf));
-   // gpio_set_level(LED_WHITE_GPIO,1);
+    //gpio_set_level(LED_WHITE_GPIO,1);
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(
             LED_task,                  // 태스크 함수

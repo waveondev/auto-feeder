@@ -81,23 +81,36 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			else if (!strncmp(ag[1], "ledr", 4))
 			{
                 val32 = atoi(ag[2]);
-                set_rgb_led(val32,0,0,0);
+                set_rgb_len_no_Breathing(val32,0,0,0);
             }	
 			else if (!strncmp(ag[1], "ledg", 4))
 			{
                 val32 = atoi(ag[2]);
-				set_rgb_led(0,val32,0,0);
+				set_rgb_len_no_Breathing(0,val32,0,0);
             }			
 			else if (!strncmp(ag[1], "ledb", 4))
 			{
                 val32 = atoi(ag[2]);
-				set_rgb_led(0,0,val32,0);
+				set_rgb_len_no_Breathing(0,0,val32,0);
             }			
 			else if (!strncmp(ag[1], "ledw", 4))
 			{
                 val32 = atoi(ag[2]);
-				set_rgb_led(0,0,0,val32);
-            }		
+				set_rgb_len_no_Breathing(0,0,0,val32);
+            }	
+			else if (!strncmp(ag[1], "led_b", 5))
+			{
+				uint8_t min = atoi(ag[2]);
+				uint8_t max = atoi(ag[3]);
+				uint8_t value = (uint8_t)strtol(ag[4], NULL, 16); 
+
+				uint8_t r = (value & 0x08)? 255 : 0;
+				uint8_t g = (value & 0x04)? 255 : 0;
+				uint8_t b = (value & 0x02)? 255 : 0;
+				uint8_t w = (value & 0x01)? 255 : 0;
+
+				Breathing_Setup_Debug(1,2,min,max, r,g,b,w);
+            }
 			else if (!strncmp(ag[1], "scan", 4))
 			{
                 wifi_scan_start();
@@ -121,15 +134,15 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			}
 			else if (!strncmp(ag[1], "bleota", 6))
 			{
-				motion_msg_send(OTA_MODE_REQUEST,1);
+				Tracker_All_Send(OTA_MODE_REQUEST,1);
 			}
 			else if (!strncmp(ag[1], "motion", 6))
 			{
-				motion_msg_send(MOTION_START_REQUEST,1);
+				Tracker_All_Send(MOTION_START_REQUEST,1);
 			}	
 			else if (!strncmp(ag[1], "health", 6))
 			{
-				motion_msg_send(HEALTH_DATA_REQUEST,1);
+				Tracker_All_Send(HEALTH_DATA_REQUEST,1);
 			}	
 			else if (!strncmp(ag[1], "rm", 2))
 			{

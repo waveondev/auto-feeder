@@ -182,6 +182,4 @@ void aws_iot_task_init(void)
         //xTaskCreate(aws_iot_main_entry, "aws_iot_task", 24576, NULL, 5, NULL);
         is_aws_started = true;
     }
-
-
 }

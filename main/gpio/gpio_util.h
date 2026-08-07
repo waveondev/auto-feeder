@@ -51,7 +51,7 @@ typedef enum {
 #define FEED_PWM_CW     48
 #define ACUUM_PWM_CW     18
 
-#define SLIDING_A_SEN  45
+#define SLIDING_A_SEN  42
 #define SLIDING_B_SEN  20
 #define FEED_SEN  19
 

@@ -15,59 +15,114 @@
 #include "app_HX711.h"
 #include "app_TOF.h"
 #include "app_acc_motor.h"
+#include "app_adc.h"
 static const char *TAG = __FILE__;
 
 static QueueHandle_t feed_motor_queue = NULL;
+static bool Motor_enable = false;
+static bool Motor_CW = false;  
 
+
+static void start_feed_motor_with_boost(int target_percentage, int Motor_motion);
 void Feeder_CW(void)
 {
-       // 기본 초기 출력 상태를 LOW(0)로 세팅
-    gpio_set_level(FEED_PWM_CW, 0);       
-    gpio_set_level(FEED_PWM_IN, 1);
+    start_feed_motor_with_boost(100,MOTOR_CW);
 }
 void Feeder_CCW(void)
 {
-       // 기본 초기 출력 상태를 LOW(0)로 세팅
-    gpio_set_level(FEED_PWM_CW, 1);       
-    gpio_set_level(FEED_PWM_IN, 1);
+    start_feed_motor_with_boost(100,MOTOR_CCW);
 }
 
 void Feeder_coast(void)
 {
-       // 기본 초기 출력 상태를 LOW(0)로 세팅
-    gpio_set_level(FEED_PWM_CW, 1);       
-    gpio_set_level(FEED_PWM_IN, 0);
+    start_feed_motor_with_boost(100,MOTOR_COAST);
 }
 void Feeder_break(void)
 {
-       // 기본 초기 출력 상태를 LOW(0)로 세팅
-    gpio_set_level(FEED_PWM_CW, 0);       
-    gpio_set_level(FEED_PWM_IN, 0);
+    start_feed_motor_with_boost(100,MOTOR_BREAK);
 }
-
-
+ 
 static void feedmotor_boost_task(void *pvParameters)
 {
     int received_data;
     
     while(1)
     {
-        if (xQueueReceive(feed_motor_queue, &received_data, portMAX_DELAY) == pdPASS) {
+        if (xQueueReceive(feed_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
             ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d",received_data);
 
-            while(Sliding_Back_Enable() == false)
+            switch(received_data)
             {
-                vTaskDelay(pdMS_TO_TICKS(1000)); 
-                ESP_LOGI(TAG,"SLID BACK WAIT");
+                case MOTOR_CW:
+                    while(Sliding_Back_Enable() == false)
+                    {
+                        vTaskDelay(pdMS_TO_TICKS(1000)); 
+                        ESP_LOGI(TAG,"SLID BACK WAIT");
+                    }  
+                    Motor_enable = true;
+                    gpio_set_level(FEED_PWM_CW, 1);       
+                    gpio_set_level(FEED_PWM_IN, 1);
+                break;
+                case MOTOR_CCW:
+                    Motor_enable = true;
+                    gpio_set_level(FEED_PWM_CW, 0);       
+                    gpio_set_level(FEED_PWM_IN, 1);
+                break;
+                case MOTOR_COAST:
+                    Motor_enable = false;
+                    gpio_set_level(FEED_PWM_CW, 1);       
+                    gpio_set_level(FEED_PWM_IN, 0);
+                break;                
+                case MOTOR_BREAK:
+                    Motor_enable = false;
+                    gpio_set_level(FEED_PWM_CW, 0);       
+                    gpio_set_level(FEED_PWM_IN, 0);
+                break;                
+            }
+        }
+        if(Motor_enable == true)
+        {
+            if(Feed_Front_Enable() == true && received_data == 1)
+            {
+                ESP_LOGI(TAG,"FEED MAX");
+                Motor_enable = false;
+                gpio_set_level(FEED_PWM_CW, 1);       
+                gpio_set_level(FEED_PWM_IN, 0);
             }  
+            if(GetFeed_ADC() > 500)
+            {
+                gpio_set_level(FEED_PWM_CW, 1);       
+                gpio_set_level(FEED_PWM_IN, 0);
+                vTaskDelay(1000);
+                if(received_data == 1)
+                {
+                    gpio_set_level(FEED_PWM_CW, 1);       
+                    gpio_set_level(FEED_PWM_IN, 1);
+                }
+                else
+                {
+                    gpio_set_level(FEED_PWM_CW, 0);       
+                    gpio_set_level(FEED_PWM_IN, 1);
+                }
 
-            Feeder_CW();
+                vTaskDelay(1000);
+                if(received_data == 1)
+                {
+                    gpio_set_level(FEED_PWM_CW, 0);       
+                    gpio_set_level(FEED_PWM_IN, 1);
+                }
+                else
+                {
+                    gpio_set_level(FEED_PWM_CW, 1);       
+                    gpio_set_level(FEED_PWM_IN, 1);
+                }
+            }            
         }
     }
 }
 
 
-void start_feed_motor_with_boost(int target_percentage, int Motor_motion)
+static void start_feed_motor_with_boost(int target_percentage, int Motor_motion)
 {
     ESP_LOGI(TAG, "큐 전송 시도 -> 속도: %d", Motor_motion);
     BaseType_t xStatus = xQueueSend(feed_motor_queue, &Motor_motion, pdMS_TO_TICKS(100));
