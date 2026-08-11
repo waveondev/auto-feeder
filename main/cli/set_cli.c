@@ -77,7 +77,10 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				offset += sprintf (&pcWriteBuffer[offset], "\r\nset \r\n");
 			}
-
+			else if (!strncmp(ag[1], "ledoff", 6))
+			{
+                set_rgb_len_no_Breathing(0,0,0,0);
+            }		
 			else if (!strncmp(ag[1], "ledr", 4))
 			{
                 val32 = atoi(ag[2]);
@@ -165,13 +168,13 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					app_config->motor_current_limit = 1200;
 					app_config->sound_effect_idx = 0;
 					app_config->food_low_limit = 10;
-					app_config->gate_way_rssi_th = -85;
+					app_config->gate_way_rssi_th = -80;
 					app_config->hx1_scale = 1000.0f;
 					app_config->hx1_offset = 0;
 					app_config->case_raw_data = 0;
 					app_config->tof_sense_threshold_l = 250;
 					app_config->motion_data_time = 1800;
-					app_config->dispense_duration = 2400;
+					app_config->dispense_duration = 240;
 					app_config->dispense_amount_g = 50;
 					sprintf(app_config->env_mode,"dev");
 					if(atoi(ag[3]))
@@ -208,6 +211,16 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				gpio_set_level(IR_ONOFF0, atoi(ag[2])?1:0);
 			}		
+			else if (!strncmp(ag[1], "mode", 4))
+			{
+				Opmode_Set();
+			}		
+			else if (!strncmp(ag[1], "int", 3))
+			{
+				gpio_set_level(PIN_TOF0_INT, atoi(ag[2])?1:0);
+			}					
+
+	
     
 
 			  

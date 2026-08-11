@@ -25,15 +25,19 @@ static const char *TAG = __FILE__;
 static adc_cali_handle_t cali_ch0_handle = NULL;
 static adc_cali_handle_t cali_ch5_handle = NULL;
 static adc_cali_handle_t cali_ch6_handle = NULL;
+static adc_cali_handle_t cali_ch7_handle = NULL;
 static bool do_cali_ch0 = false;
 static bool do_cali_ch5 = false;
 static bool do_cali_ch6 = false;
+static bool do_cali_ch7 = false;
 static int ch0_mv = 0;
 static int ch5_mv = 0;
 static int ch6_mv = 0;  
+static int ch7_mv = 0; 
 static int ch0_mv_max = 100;
 static int ch5_mv_max = 100;
 static int ch6_mv_max = 100;  
+static int ch7_mv_max = 100;  
 adc_continuous_handle_t adc_handle = NULL;
 
 
@@ -49,7 +53,10 @@ int GetFeed_ADC(void)
 {
     return ch6_mv;
 }
-
+int GetIR_ADC(void)
+{
+    return ch7_mv;
+}
 static bool init_adc_calibration(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle) {
     adc_cali_handle_t handle = NULL;
     esp_err_t ret = ESP_FAIL;
@@ -166,7 +173,12 @@ void ADC_Sensing(void)
                         }                                  
                     }
                 break;
-
+                case ADC_CHANNEL_7: // GPIO 7
+                    if (do_cali_ch7) {
+                        adc_cali_raw_to_voltage(cali_ch7_handle, raw, &mv_out);
+                        ch7_mv = mv_out;                         
+                    }
+                break;
                 default:
                     break;
             }
@@ -194,7 +206,12 @@ void ADC_Sensing(void)
                         ESP_LOGI(TAG, "feed Voltage: %4d mV max = %d\r\n", ch6_mv, ch6_mv_max);
                 }
                 break;
-
+            case ADC_CHANNEL_7: // GPIO 7
+                if (do_cali_ch7) {
+                    if(DBG_Resister->adc)
+                        ESP_LOGI(TAG, "IR Voltage: %4d\r\n", ch7_mv);
+                }
+                break;
             default:
                 break;
         } 
@@ -210,12 +227,12 @@ void adc_init(void) {
 
     // 2. 3개 채널(GPIO 1, 6, 7) 패턴 등록
     adc_continuous_config_t dig_cfg = {
-        .sample_freq_hz = 2000, // 20kHz 샘플링
+        .sample_freq_hz = 80000, // 20kHz 샘플링
         .conv_mode = ADC_CONV_SINGLE_UNIT_1, // ADC1 단독 사용
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };
 
-    adc_digi_pattern_config_t adc_pattern[3] = {0};
+    adc_digi_pattern_config_t adc_pattern[4] = {0};
 
     // [채널 0] GPIO 1 (ADC_CHANNEL_0)
     adc_pattern[0].atten = EXAMPLE_ADC_ATTEN;
@@ -235,7 +252,13 @@ void adc_init(void) {
     adc_pattern[2].unit = ADC_UNIT_1;
     adc_pattern[2].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
 
-    dig_cfg.pattern_num = 3;
+    // [채널 6] GPIO 7 (ADC_CHANNEL_6)
+    adc_pattern[3].atten = EXAMPLE_ADC_ATTEN;
+    adc_pattern[3].channel = ADC_CHANNEL_7;
+    adc_pattern[3].unit = ADC_UNIT_1;
+    adc_pattern[3].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+
+    dig_cfg.pattern_num = 4;
     dig_cfg.adc_pattern = adc_pattern;
 
     ESP_ERROR_CHECK(adc_continuous_config(adc_handle, &dig_cfg));
@@ -244,6 +267,7 @@ void adc_init(void) {
     do_cali_ch0 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_0, EXAMPLE_ADC_ATTEN, &cali_ch0_handle);
     do_cali_ch5 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_5, EXAMPLE_ADC_ATTEN, &cali_ch5_handle);
     do_cali_ch6 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_6, EXAMPLE_ADC_ATTEN, &cali_ch6_handle);
+    do_cali_ch7 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_7, EXAMPLE_ADC_ATTEN, &cali_ch7_handle);
 
     // 4. DMA 수집 시작
     ESP_ERROR_CHECK(adc_continuous_start(adc_handle));

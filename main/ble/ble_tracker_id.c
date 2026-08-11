@@ -224,11 +224,21 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 
     memcpy(&p_dev->dev_info,dev_info,sizeof(dev_info_t));
     // 2. 데이터 초기화 (시간은 0ms부터 시작)
-    strncpy(p_dev->Device_ID, Tracker_ID, sizeof(p_dev->Device_ID) - 1);
+// MAC 주소 6바이트 전체를 포함하여 Device_ID 조합
+    // 예: "MyDevice-A1B2C3D4E5F6"
+    snprintf(p_dev->Device_ID, sizeof(p_dev->Device_ID), "%s-%02X%02X%02X%02X%02X%02X", 
+            Tracker_ID,           
+            p_dev->dev_info.addr[0], 
+            p_dev->dev_info.addr[1], 
+            p_dev->dev_info.addr[2], 
+            p_dev->dev_info.addr[3], 
+            p_dev->dev_info.addr[4], 
+            p_dev->dev_info.addr[5]
+            );
     p_dev->Enable = 1;
     // 4. 전역 배열에 등록
     Tracker_Device[target_index] = p_dev;
-    printf("장치 [%s] 생성 완료 \n", Tracker_ID);
+    printf("장치 [%s] 생성 완료 \n", p_dev->Device_ID);
 }
 
 

@@ -14,9 +14,13 @@
 #include "vl53l0x_platform.h"
 #include "app_config_flash.h"
 #include "aws_iot_task.h"
-
-
+#include "ble_tracker_id.h"
+#include "debug_cli.h"
+#include "app_adc.h"
 static const char *TAG = __FILE__;
+
+#if 0
+
 
 // ⭐️ ST 공식 API용 디바이스 구조체 전역 변수 선언 (두 채널 분리)
 static VL53L0X_Dev_t dev_tof0;
@@ -120,8 +124,7 @@ static bool init_single_vl53l0x(VL53L0X_Dev_t *pDevice, i2c_port_t i2c_port, con
 
     return true;
 }
-#include "ble_tracker_id.h"
-#include "debug_cli.h"
+
 // 💡 센서가 정상적으로 응답하는지 체크하는 디텍트 함수
 bool VL53L0X_Detect(void)
 {
@@ -225,4 +228,41 @@ bool TOF_VL53L0X_init(void)
 
     return (g_tof0_ok);
 }
+#else
 
+bool VL53L0X_Detect(void)
+{
+    if (GetIR_ADC() > 1550 || GetTracker_Id_active()) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void VL53L0X_Sensing(void)
+{
+    gpio_set_level(PIN_TOF0_INT, 1);   
+    vTaskDelay(pdMS_TO_TICKS(1));
+    ADC_Sensing();
+
+    gpio_set_level(PIN_TOF0_INT, 0); 
+   // vTaskDelay(500);
+}
+
+bool TOF_VL53L0X_init(void)
+{    
+
+    gpio_config_t io_conf = {                   
+        .pin_bit_mask =(1ULL << PIN_TOF0_INT) |(1ULL << 46),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+    gpio_config(&io_conf);
+    gpio_set_level(PIN_TOF0_INT, 0); 
+
+    gpio_set_level(46, 1);   
+    return true;
+}
+#endif

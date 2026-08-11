@@ -53,44 +53,59 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
 
+void Lock_Set(bool state)
+{
+    button_lock = state;
+}
+
+
 void bf_SingleClickAction(void) {
     //Opmode_Set();
     if(button_lock == true)
     {
-
+        led_bit_enable(LOCK_MODE_BIT);
+        return;             
     }
-    else
-    {
-        feeder_mode_init();
-    }
+    feeder_mode_init();
+    
     ESP_LOGI(TAG,"Single Click Action executed \r\n");
 }
 
 void bf_DoubleClickAction(void) {
     app_config_t* app_config = get_app_config();
+    
     Clean_mode_set();
     ESP_LOGI(TAG,"Double Click Action executed\r\n");
 }
 
 void bf_LongPress3SecAction(void) {
     if(button_lock == true)
-        return;
+    {
+        led_bit_enable(LOCK_MODE_BIT);
+        return;             
+    }
     ESP_LOGI(TAG,"Long Press 3 Sec Action executed\r\n");
 }
 
 void bf_LongPress5SecAction(void) {
     if(button_lock == true)
-        return;    
+    {
+        led_bit_enable(LOCK_MODE_BIT);
+        return;             
+    }
+        
     ESP_LOGI(TAG,"Long Press 5 Sec Action executed \r\n");
     Wifi_Disconnect();
      wifi_scan_start();
 }
 
 void bf_LongPress10SecAction(void) {
-    if(button_lock == true)
-        return;
+    //if(button_lock == true)
+        //return;
     ESP_LOGI(TAG,"Long Press 10 Sec Action executed \r\n");
-    button_lock = !button_lock;
+
+    
+    
     //delay(1000); 
     //ESP.restart();
 }

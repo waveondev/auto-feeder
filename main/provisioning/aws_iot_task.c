@@ -51,6 +51,8 @@ void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Pac
     if(tracker_mqtt_queue == NULL)
     {
         ESP_LOGW("mqtt_tx", "tracker_mqtt_queue NULL.");
+        if(data != NULL)
+            free(data);
         return;        
     }
 
@@ -155,7 +157,7 @@ static void aws_iot_main_entry(void *pvParameters)
 
         // 2) 죽은 TLS/소켓 세션 정리
         DisconnectMqttSession();
-        xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        vTaskDelay(10000);
     }
 
     vTaskDelete(NULL);

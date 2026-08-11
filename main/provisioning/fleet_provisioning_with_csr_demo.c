@@ -304,7 +304,6 @@ static void provisioningPublishCallback( MQTTPublishInfo_t * pPublishInfo,
                                         mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
 
                                 char payload_buf[128];
-  
                                 snprintf(payload_buf, sizeof(payload_buf), "{\"thing_name\":\"%s_%s\"}",CONFIG_DEVICE_PREFIX, dynamicMacStr);
 
                                 // 3. 앱에 암호화된 최종 완료 통보 쏘기

@@ -1,6 +1,7 @@
 #ifndef __APP_BUTTON_H__
 #define __APP_BUTTON_H__
 
+void Lock_Set(bool state);
 void button_task_init(void);
 
 void bf_LongPress10SecAction(void);

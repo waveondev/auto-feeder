@@ -11,6 +11,7 @@
 #include "mbedtls/gcm.h"
 #include "esp_random.h"
 #include "aws_iot_task.h"
+#include "app_button.h"
 #define OTA_URL "https://evtago.s3.ap-northeast-2.amazonaws.com/water-dispenser.bin"
 // 분할 전송 시 사용할 MTU 사이즈를 저장할 전역/정적 변수 [앱에서 받을 수 있는 ble의 사이즈를 저장]
 
@@ -146,7 +147,6 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
     char buf[256];
     if(len >= sizeof(buf))
         len = sizeof(buf) - 1;
-    printf("Code = %s \r\n",data);
     memcpy(buf, data, len);
     buf[len] = '\0';
 
@@ -155,8 +155,9 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
     // ---------------------------------------------------------
     cJSON *root = cJSON_Parse(buf);
     if (root != NULL) {
+
         cJSON *event_type = cJSON_GetObjectItem(root, "event_type");
-        
+        printf("buf = %s \r\n",buf);
         if (event_type && cJSON_IsString(event_type)) {
             
             // [A] MTU 크기 (mtu_info) 수신
@@ -342,6 +343,16 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
         wifi_scan_start();
         return;
     }
+    if(strcmp(buf, "lock") == 0)
+    {
+        Lock_Set(1);
+        return;
+    }
+    if(strcmp(buf, "unlock") == 0)
+    {
+        Lock_Set(0);
+        return;
+    }    
     if(strcmp(buf, "OTA") == 0)
     {
         ota_main(OTA_URL);

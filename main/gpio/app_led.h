@@ -10,6 +10,9 @@
 #define FOOD_EMPTY_BIT  (1<<10)
 #define FOOD_DISCHARGE_BIT  (1<<9)
 #define LOCK_MODE_BIT   (1<<8)
+#define FEED_MODE_BIT   (1<<7)
+#define SLID_MODE_BIT   (1<<6)
+#define ACC_MODE_BIT   (1<<5)
 void LED_Bright_Set(uint8_t value);
 bool TOF_enable(void);
 bool led_bit_status(uint16_t status);

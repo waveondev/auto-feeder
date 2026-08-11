@@ -6,7 +6,7 @@ BaseType_t prvMQTTformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen,
     const char *pcParameter;
     BaseType_t xParameterStringLength, xReturn;
     static BaseType_t lParameterNumber = 0;
-    char ag[6][40];
+    char ag[6][40] = {0};
     char buf[64];
     int  offset=0;
     int j;

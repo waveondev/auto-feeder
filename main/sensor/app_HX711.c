@@ -131,6 +131,10 @@ static void HX711_task(void *pvParameter)
     while (1) {
 
         HX711_Sensing();
+        if(loadcell_data_get() < -50.0f)
+            led_bit_enable(HARDWARE_ERR_BIT);
+        else
+            led_bit_disable(HARDWARE_ERR_BIT);
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     

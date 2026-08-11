@@ -320,6 +320,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
             led_bit_enable(PAIRING_BIT);
+            xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
             if (s_allow_reconnect) {
                 if (s_retry_num < MAXIMUM_RETRY) {
                     esp_wifi_connect();

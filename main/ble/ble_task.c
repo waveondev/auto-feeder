@@ -23,7 +23,7 @@
 #include "device_config.h"
 static const char *TAG = __FILE__;
 
-#define DEVICE_NAME "Wave_T2"
+
 #define MY_UUID128_BASE(XX, YY) \
     BLE_UUID128_DECLARE(0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, \
                         0xF3, 0x93, 0xB5, 0xA3, YY, XX, 0x40, 0x6E)
@@ -804,9 +804,9 @@ static void mac_send_timer_callback(void* arg)
     // [by.jeon] ble 연결 직후 meta 데이터를 보내야 한다.
     snprintf(Str, sizeof(Str), 
              "{\"event_type\":\"meta\",\"data\":{\"serial\":\"%s-%02X%02X%02X%02X%02X%02X\",\"model\":\"%s\",\"hw_rev\":\"%s\",\"fw\":\"%s\"}}", 
-             CONFIG_DEVICE_PREFIX,                               // W100
+             CONFIG_DEVICE_PREFIX,                               //
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],     // MAC Address
-             CONFIG_DEVICE_TYPE,                                 // w100
+             CONFIG_DEVICE_TYPE,                                 //
              CONFIG_HW_REV,                                      // r1.0
              CONFIG_FW_VERSION);                                 // v1.0.0
     printf("send %s ", Str);
@@ -877,7 +877,11 @@ void ble_task_init(void)
     ble_hs_cfg.sm_io_cap = CONFIG_EXAMPLE_IO_TYPE;
 
     assert(gatt_svr_init() == 0);
-    assert(ble_svc_gap_device_name_set(DEVICE_NAME) == 0);
+    char name[30] = {0};
+
+    sprintf(name,"%s-WAVE",CONFIG_DEVICE_PREFIX);
+
+    assert(ble_svc_gap_device_name_set(name) == 0);
 
     ble_store_config_init();
 

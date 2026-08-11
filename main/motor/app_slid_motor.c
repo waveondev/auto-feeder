@@ -16,6 +16,7 @@
 #include "app_feed_motor.h"
 #include "app_acc_motor.h"
 #include "app_adc.h"
+#include "app_led.h"
 static const char *TAG = __FILE__;
 
 rmt_channel_handle_t pwm_chan = NULL;
@@ -180,7 +181,9 @@ static void slidmotor_boost_task(void *pvParameters)
     {
         if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
             ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", 
+
                      received_data.target_percentage, received_data.Motor_Motion);
+            led_bit_enable(SLID_MODE_BIT);
             int target_percentage = received_data.target_percentage;
 
             switch(received_data.Motor_Motion)
@@ -196,11 +199,13 @@ static void slidmotor_boost_task(void *pvParameters)
                     Slid_State = SLID_CLOSING;
                 break;
                 case MOTOR_COAST:
+                    led_bit_disable(SLID_MODE_BIT);
                     target_percentage = 0;
                     Motor_CW = true;    
                     Motor_enable = false;            
                 break;
                 case MOTOR_BREAK:
+                    led_bit_disable(SLID_MODE_BIT);                
                     target_percentage = 0;
                     Motor_CW = false;
                     Motor_enable = false;            
@@ -223,6 +228,7 @@ static void slidmotor_boost_task(void *pvParameters)
             {
                 if(Sliding_Front_Enable())
                 {
+      
                     Slid_State = SLID_OPEN;
                     Sliding_coast();
                     Motor_enable = false;
@@ -233,6 +239,7 @@ static void slidmotor_boost_task(void *pvParameters)
                 if(Sliding_Back_Enable())
                 {
                     Sliding_coast();
+                    
                     Slid_State = SLID_CLOSE;
                     Motor_enable = false;
                 }  

@@ -16,6 +16,7 @@
 #include "app_TOF.h"
 #include "app_acc_motor.h"
 #include "app_adc.h"
+#include "app_led.h"
 static const char *TAG = __FILE__;
 
 static QueueHandle_t feed_motor_queue = NULL;
@@ -50,7 +51,7 @@ static void feedmotor_boost_task(void *pvParameters)
     {
         if (xQueueReceive(feed_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
             ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d",received_data);
-
+            led_bit_enable(FEED_MODE_BIT);
             switch(received_data)
             {
                 case MOTOR_CW:
@@ -69,11 +70,13 @@ static void feedmotor_boost_task(void *pvParameters)
                     gpio_set_level(FEED_PWM_IN, 1);
                 break;
                 case MOTOR_COAST:
+                    led_bit_disable(FEED_MODE_BIT);
                     Motor_enable = false;
                     gpio_set_level(FEED_PWM_CW, 1);       
                     gpio_set_level(FEED_PWM_IN, 0);
                 break;                
                 case MOTOR_BREAK:
+                    led_bit_disable(FEED_MODE_BIT);
                     Motor_enable = false;
                     gpio_set_level(FEED_PWM_CW, 0);       
                     gpio_set_level(FEED_PWM_IN, 0);
@@ -84,6 +87,7 @@ static void feedmotor_boost_task(void *pvParameters)
         {
             if(Feed_Front_Enable() == true && received_data == 1)
             {
+                led_bit_disable(FEED_MODE_BIT);
                 ESP_LOGI(TAG,"FEED MAX");
                 Motor_enable = false;
                 gpio_set_level(FEED_PWM_CW, 1);       

@@ -1008,10 +1008,13 @@ static int privateKeySigningCallback(void* pContext,
     ( void ) ( mdAlg );
 
     /* Sanity check buffer length. */
-    if( hashLen > sizeof( toBeSigned ) )
+    if ( hashLen > sizeof( toBeSigned ) )
     {
-        ret = CKR_ARGUMENTS_BAD;
+        // hashLen이 toBeSigned 배열 크기(256)를 초과하는 경우 에러 처리
+        ESP_LOGE("PKCS11", "hashLen (%d) exceeds toBeSigned buffer size!", (int)hashLen);
+        return CKR_ARGUMENTS_BAD; // 또는 사용 중인 PKCS11/ESP 에러 리턴 코드
     }
+
 
     mech.mechanism = CKM_ECDSA;
     memcpy( toBeSigned, pHash, hashLen );

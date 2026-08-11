@@ -5,5 +5,7 @@ void ADC_Sensing(void);
 int GetSlid_ADC(void);
 int GetFeed_ADC(void);
 int GetAcc_ADC(void);
+int GetIR_ADC(void);
+
 #endif
 

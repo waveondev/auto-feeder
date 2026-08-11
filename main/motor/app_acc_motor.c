@@ -12,20 +12,19 @@
 #include "tx_mqtt.h"
 #include "aws_iot_task.h"
 #include "app_sensor.h"
-
+#include "app_adc.h"
 static const char *TAG = __FILE__;
-static QueueHandle_t acc_motor_queue = NULL;
 static bool is_motor_running = false; // 모터 동작 중 플래그
-
+SemaphoreHandle_t motor_semaphore = NULL;
 void Accum_Set(bool status)
 {
     if(status)
         gpio_set_level(ACUUM_PWM_IN, 1);       
     else
-        gpio_set_level(ACUUM_PWM_IN, 0);   
+        gpio_set_level(ACUUM_PWM_IN, 0);
 }
 
-void start_acc_motor_with_boost(int target_percentage, int Motor_motion)
+void start_acc_motor_with_boost(void)
 {
     // 이미 모터가 동작 중이면 중복 요청 방지
     if (is_motor_running) {
@@ -33,11 +32,9 @@ void start_acc_motor_with_boost(int target_percentage, int Motor_motion)
         return;
     }
 
-    ESP_LOGI(TAG, "큐 전송 시도 -> 속도: %d", Motor_motion);
-    BaseType_t xStatus = xQueueSend(acc_motor_queue, &Motor_motion, pdMS_TO_TICKS(100));
-    
-    if (xStatus != pdPASS) {
-        ESP_LOGE(TAG, "큐가 가득 차서 전송 실패!");
+    if (motor_semaphore != NULL) {
+        xSemaphoreGive(motor_semaphore); // 세마포어에 신호(1) 채우기
+        ESP_LOGI("SENDER", "모터 동작 세마포어 송신!");
     }
 }
 
@@ -49,26 +46,25 @@ static void acc_motor_boost_task(void *pvParameters)
     while(1)
     {
         // 큐에서 명령이 들어올 때까지 대기
-        if (xQueueReceive(acc_motor_queue, &received_data, portMAX_DELAY) == pdPASS) {
-            ESP_LOGW(TAG, "큐 수신 완료! -> [진공 모터 구동] 속도: %d", received_data);
-            
+        if (xSemaphoreTake(motor_semaphore, portMAX_DELAY) == pdTRUE) 
+        {            
+            led_bit_enable(ACC_MODE_BIT);
             is_motor_running = true;
             uint8_t retry_count = 0;
             bool vacuum_success = false;
 
    
             Accum_Set(true);
-
+            vTaskDelay(1000);
             while (retry_count < 3 && !vacuum_success) {
                 
                 for (int i = 0; i < 600; i++) {
                     vTaskDelay(pdMS_TO_TICKS(100));
 
 
-                    // int adc_val = get_adc();
-                    int adc_val = 150; 
+                    int adc_val = GetAcc_ADC(); 
 
-                    if (adc_val < 200) {
+                    if (adc_val > 300) {
                         ESP_LOGI(TAG, "진공 도달 성공! (ADC: %d)", adc_val);
                         vacuum_success = true;
                         break; 
@@ -81,11 +77,12 @@ static void acc_motor_boost_task(void *pvParameters)
                 }
             }
 
-            Accum_Set(false);
+            
             if (!vacuum_success) {
+                Accum_Set(false);
                 ESP_LOGE(TAG, "최종 진공 형성 실패 (3회 타임아웃)");
             }
-            
+            led_bit_disable(ACC_MODE_BIT);
             is_motor_running = false;
         }
     }
@@ -105,15 +102,16 @@ void init_acc_motor(void) {
         .pull_down_en = GPIO_PULLDOWN_ENABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
         .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
     };
-
+    //gpio_set_level(ACUUM_PWM_CW,1);
     // GPIO 설정 적용
     ESP_ERROR_CHECK(gpio_config(&io_conf));
 
-    acc_motor_queue = xQueueCreate(10, sizeof(int));
-    if(acc_motor_queue == NULL)
-    {
-            ESP_LOGI(TAG, "acc_motor_queue fail ");
+    motor_semaphore = xSemaphoreCreateBinary();
+    
+    if (motor_semaphore == NULL) {
+        ESP_LOGE("MAIN", "세마포어 생성 실패!");
     }
+
     
     if (xTaskCreatePinnedToCore(
             acc_motor_boost_task,                  // 태스크 함수
