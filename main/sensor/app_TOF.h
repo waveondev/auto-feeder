@@ -86,7 +86,7 @@ typedef enum
       ALGO_PHASECAL_LIM                           = 0x30,
       ALGO_PHASECAL_CONFIG_TIMEOUT                = 0x30,
     }VL53L0X_Regi;
-bool VL53L0X_Detect(void);
+bool VL53L0X_Detect(bool all_state);
 bool TOF_VL53L0X_init(void);
 void VL53L0X_Sensing(void);
 #endif

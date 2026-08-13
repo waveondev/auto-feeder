@@ -10,6 +10,10 @@
 #define CONFIG_HW_REV               "r1.0"               // 하드웨어 리비전
 #define CONFIG_FW_VERSION           "v1.0.0"             // 펌웨어 버전
 
+
+#define CONFIG_TRACKER_PREFIX        "T100"               // 시리얼 넘버 접두사
+#define CONFIG_TRACKER_DEVICE_TYPE          "t100"               // 디바이스 타입
+
 // ==========================================
 // [2] MQTT 토픽(Topic) 포맷 설정
 // ==========================================

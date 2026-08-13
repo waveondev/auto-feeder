@@ -15,7 +15,7 @@ app_config_t app_config =
     .op_mode = FEED_MODE_SCHEDULED_PORTION,
     .sliding_close_mode = 0,
     .motor_current_limit = 1200,
-    .sound_effect_idx = 0,
+    .motor_stuck_retry_count = 3,
     .food_low_limit = 10,
     .gate_way_rssi_th = -80,
     .hx1_scale = 1000.0f,
@@ -92,7 +92,7 @@ void dump_all_configurations(void)
     ESP_LOGI(TAG, "  - Operation Mode        : %ld", app_config.op_mode);
     ESP_LOGI(TAG, "  - Sliding Close Mode    : %ld", app_config.sliding_close_mode);
     ESP_LOGI(TAG, "  - Motor Current Limit   : %ld", app_config.motor_current_limit);
-    ESP_LOGI(TAG, "  - Sound Effect Index    : %ld", app_config.sound_effect_idx);
+    ESP_LOGI(TAG, "  - motor_stuck_retry     : %ld", app_config.motor_stuck_retry_count);
     ESP_LOGI(TAG, "  - Food Low Limit        : %ld", app_config.food_low_limit);
     ESP_LOGI(TAG, "  - Gateway RSSI Thr      : %ld dBm", app_config.gate_way_rssi_th);
     ESP_LOGI(TAG, "  - HX1 Scale Factor      : %.2f", app_config.hx1_scale);

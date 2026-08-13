@@ -230,9 +230,14 @@ bool TOF_VL53L0X_init(void)
 }
 #else
 
-bool VL53L0X_Detect(void)
+bool VL53L0X_Detect(bool all_state)
 {
-    if (GetIR_ADC() > 1550 || GetTracker_Id_active()) {
+    if(all_state)
+    {
+        if(GetTracker_Id_active())
+            return true;
+    }
+    if (GetIR_ADC() > 1550) {
         return true;
     } else {
         return false;

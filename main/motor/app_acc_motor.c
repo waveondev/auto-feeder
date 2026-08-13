@@ -42,7 +42,8 @@ void start_acc_motor_with_boost(void)
 static void acc_motor_boost_task(void *pvParameters)
 {
     int received_data;
-    
+    app_config_t* app_config = get_app_config();
+    uint32_t acc_stuck_count = 0;
     while(1)
     {
         // 큐에서 명령이 들어올 때까지 대기
@@ -50,14 +51,13 @@ static void acc_motor_boost_task(void *pvParameters)
         {            
             led_bit_enable(ACC_MODE_BIT);
             is_motor_running = true;
-            uint8_t retry_count = 0;
             bool vacuum_success = false;
-
+            acc_stuck_count = 0;
    
             Accum_Set(true);
             vTaskDelay(1000);
-            while (retry_count < 3 && !vacuum_success) {
-                
+            while (acc_stuck_count < app_config->motor_stuck_retry_count && !vacuum_success) {
+
                 for (int i = 0; i < 600; i++) {
                     vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -72,8 +72,8 @@ static void acc_motor_boost_task(void *pvParameters)
                 }
 
                 if (!vacuum_success) {
-                    retry_count++;
-                    ESP_LOGW(TAG, "진공 도달 실패.. 재시도 횟수: %d/3", retry_count);
+                    acc_stuck_count++;
+                    ESP_LOGW(TAG, "진공 도달 실패.. 재시도 횟수: %d", acc_stuck_count);
                 }
             }
 

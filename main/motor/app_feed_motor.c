@@ -42,16 +42,38 @@ void Feeder_break(void)
 {
     start_feed_motor_with_boost(100,MOTOR_BREAK);
 }
- 
+static void feeder_motor_cw(void)
+{
+    gpio_set_level(FEED_PWM_CW, 1);       
+    gpio_set_level(FEED_PWM_IN, 1);
+}
+static void feeder_motor_ccw(void)
+{
+    gpio_set_level(FEED_PWM_CW, 0);       
+    gpio_set_level(FEED_PWM_IN, 1);
+}
+static void feeder_motor_coast(void)
+{
+    gpio_set_level(FEED_PWM_CW, 1);       
+    gpio_set_level(FEED_PWM_IN, 0);
+}
+static void feeder_motor_break(void)
+{
+    gpio_set_level(FEED_PWM_CW, 0);       
+    gpio_set_level(FEED_PWM_IN, 0);
+}
 static void feedmotor_boost_task(void *pvParameters)
 {
     int received_data;
-    
+    app_config_t* app_config = get_app_config();
+    uint32_t feed_stuck_count = 0;
     while(1)
     {
         if (xQueueReceive(feed_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
             ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d",received_data);
             led_bit_enable(FEED_MODE_BIT);
+            feed_stuck_count = 0;
+            
             switch(received_data)
             {
                 case MOTOR_CW:
@@ -61,25 +83,21 @@ static void feedmotor_boost_task(void *pvParameters)
                         ESP_LOGI(TAG,"SLID BACK WAIT");
                     }  
                     Motor_enable = true;
-                    gpio_set_level(FEED_PWM_CW, 1);       
-                    gpio_set_level(FEED_PWM_IN, 1);
+                    feeder_motor_cw();
                 break;
                 case MOTOR_CCW:
                     Motor_enable = true;
-                    gpio_set_level(FEED_PWM_CW, 0);       
-                    gpio_set_level(FEED_PWM_IN, 1);
+                    feeder_motor_ccw();
                 break;
                 case MOTOR_COAST:
                     led_bit_disable(FEED_MODE_BIT);
                     Motor_enable = false;
-                    gpio_set_level(FEED_PWM_CW, 1);       
-                    gpio_set_level(FEED_PWM_IN, 0);
+                    feeder_motor_coast();
                 break;                
                 case MOTOR_BREAK:
                     led_bit_disable(FEED_MODE_BIT);
                     Motor_enable = false;
-                    gpio_set_level(FEED_PWM_CW, 0);       
-                    gpio_set_level(FEED_PWM_IN, 0);
+                    feeder_motor_break();
                 break;                
             }
         }
@@ -90,35 +108,38 @@ static void feedmotor_boost_task(void *pvParameters)
                 led_bit_disable(FEED_MODE_BIT);
                 ESP_LOGI(TAG,"FEED MAX");
                 Motor_enable = false;
-                gpio_set_level(FEED_PWM_CW, 1);       
-                gpio_set_level(FEED_PWM_IN, 0);
+                feeder_motor_coast();
             }  
             if(GetFeed_ADC() > 500)
             {
-                gpio_set_level(FEED_PWM_CW, 1);       
-                gpio_set_level(FEED_PWM_IN, 0);
-                vTaskDelay(1000);
-                if(received_data == 1)
+                feed_stuck_count++;
+                feeder_motor_coast();      
+                if(feed_stuck_count > app_config->motor_stuck_retry_count)
                 {
-                    gpio_set_level(FEED_PWM_CW, 1);       
-                    gpio_set_level(FEED_PWM_IN, 1);
+                    led_bit_disable(FEED_MODE_BIT);
+                    Motor_enable = false;           
                 }
                 else
                 {
-                    gpio_set_level(FEED_PWM_CW, 0);       
-                    gpio_set_level(FEED_PWM_IN, 1);
-                }
+                    vTaskDelay(1000);
+                    if(received_data == 1)
+                    {
+                        feeder_motor_cw();
+                    }
+                    else
+                    {
+                        feeder_motor_ccw();
+                    }
 
-                vTaskDelay(1000);
-                if(received_data == 1)
-                {
-                    gpio_set_level(FEED_PWM_CW, 0);       
-                    gpio_set_level(FEED_PWM_IN, 1);
-                }
-                else
-                {
-                    gpio_set_level(FEED_PWM_CW, 1);       
-                    gpio_set_level(FEED_PWM_IN, 1);
+                    vTaskDelay(1000);
+                    if(received_data == 1)
+                    {
+                        feeder_motor_ccw();
+                    }
+                    else
+                    {
+                        feeder_motor_cw();
+                    }
                 }
             }            
         }

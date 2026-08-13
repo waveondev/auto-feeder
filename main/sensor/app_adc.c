@@ -10,6 +10,7 @@
 #include "esp_adc/adc_continuous.h"
 #include "app_feed_motor.h"
 #include "app_acc_motor.h"
+#include "app_led.h"
 static const char *TAG = __FILE__;
 
 
@@ -37,7 +38,12 @@ static int ch7_mv = 0;
 static int ch0_mv_max = 100;
 static int ch5_mv_max = 100;
 static int ch6_mv_max = 100;  
-static int ch7_mv_max = 100;  
+
+#define IR_SENS_COUNT 10
+static int ch7_mv_max[IR_SENS_COUNT] = {0};  
+static int ch7_count = 0;
+
+
 adc_continuous_handle_t adc_handle = NULL;
 
 
@@ -113,18 +119,18 @@ void ADC_Sensing(void)
     uint32_t ret_num = 0;
     uint32_t number_sum = 0;
     esp_err_t ret =ESP_OK;
-  
+    static int timeout_count = 0; // 연속 타임아웃 카운트
     // DMA 버퍼 읽기
     // 10ms 동안 수집된 DMA 데이터 읽기
     ret = adc_continuous_read(adc_handle,
                             result_buf,
                             sizeof(result_buf),
                             &ret_num,
-                            0);
-
+                            pdMS_TO_TICKS(10));
     DBG_Resister_t* DBG_Resister = Debug_Get();
     if (ret == ESP_OK)
     {
+        timeout_count = 0;
         uint32_t chan = 0;
         uint32_t raw  = 0;
 
@@ -176,7 +182,23 @@ void ADC_Sensing(void)
                 case ADC_CHANNEL_7: // GPIO 7
                     if (do_cali_ch7) {
                         adc_cali_raw_to_voltage(cali_ch7_handle, raw, &mv_out);
-                        ch7_mv = mv_out;                         
+                        if (ch7_count < IR_SENS_COUNT) {
+                            // 1. 아직 10개가 다 안 찼으면 앞에서부터 순서대로(0, 1, 2...) 채움
+                            ch7_mv_max[ch7_count] = mv_out;
+                            ch7_count++;
+                        } else {
+                            // 2. 10개가 꽉 차면 memmove로 한 칸씩 밀고 맨 끝(9번 방)에 최신 데이터 넣음
+                            memmove(&ch7_mv_max[0], &ch7_mv_max[1], sizeof(int) * (IR_SENS_COUNT - 1));
+                            ch7_mv_max[IR_SENS_COUNT - 1] = mv_out;
+                        }
+
+                        {
+                            int sum = 0;
+                            for (int i = 0; i < ch7_count; i++) {
+                                sum += ch7_mv_max[i];
+                            }
+                            ch7_mv = sum/ch7_count;      
+                        }
                     }
                 break;
                 default:
@@ -216,6 +238,25 @@ void ADC_Sensing(void)
                 break;
         } 
     }
+
+    if (ret == ESP_ERR_TIMEOUT) {
+        timeout_count++;
+        // 연속으로 10번 이상 TIMEOUT이 발생하면 ADC 드라이버가 멈춘 것으로 판단하고 재시작
+        if (timeout_count >= 10) {
+            ESP_LOGW("ADC", "ADC DMA 멈춤 감지! 재시작 수행...");
+            adc_continuous_stop(adc_handle);
+            adc_continuous_start(adc_handle);
+        }
+        if (timeout_count >= 50) {
+            led_bit_enable(SENSE_ERR_BIT);
+            ESP_LOGW("ADC", "ADC ERROR");
+        }
+
+        return; 
+    } else if (ret != ESP_OK) {
+        ESP_LOGE("ADC", "ADC Read Error: %s", esp_err_to_name(ret));
+        return;
+    }
 }
 void adc_init(void) {
 // 1. DMA 핸들 생성
@@ -227,7 +268,7 @@ void adc_init(void) {
 
     // 2. 3개 채널(GPIO 1, 6, 7) 패턴 등록
     adc_continuous_config_t dig_cfg = {
-        .sample_freq_hz = 80000, // 20kHz 샘플링
+        .sample_freq_hz = 20000, // 20kHz 샘플링
         .conv_mode = ADC_CONV_SINGLE_UNIT_1, // ADC1 단독 사용
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };

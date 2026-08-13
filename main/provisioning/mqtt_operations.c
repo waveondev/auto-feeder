@@ -48,10 +48,6 @@
 /* Interface include. */
 #include "mqtt_operations.h"
 
-#ifdef NETWORK_BUFFER_SIZE
-    #undef NETWORK_BUFFER_SIZE
-#endif
-#define NETWORK_BUFFER_SIZE    ( 8192 )
 
 /* MbedTLS transport include. */
 #include "mbedtls_pkcs11_posix.h"
@@ -237,7 +233,7 @@ static PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ] = { 0 }
 /**
  * @brief The network buffer must remain valid for the lifetime of the MQTT context.
  */
-static uint8_t buffer[ NETWORK_BUFFER_SIZE ];
+static uint8_t buffer[ CONFIG_MQTT_NETWORK_BUFFER_SIZE ];
 
 /**
  * @brief The MQTT context used for MQTT operation.
@@ -792,7 +788,7 @@ bool EstablishMqttSession( MQTTPublishCallback_t publishCallback,
 
         /* Fill the values for network buffer. */
         networkBuffer.pBuffer = buffer;
-        networkBuffer.size = NETWORK_BUFFER_SIZE;
+        networkBuffer.size = CONFIG_MQTT_NETWORK_BUFFER_SIZE;
 
         /* Remember the publish callback supplied. */
         appPublishCallback = publishCallback;

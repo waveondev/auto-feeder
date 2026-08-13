@@ -13,7 +13,7 @@ extern EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 
 // 외부에서 ap_list를 읽을 수 있도록 extern 선언
-extern wifi_ap_record_t ap_list[WIFI_MAX_VALUE];
+extern wifi_ap_record_t *ap_list;
 
 void Wifi_Disconnect(void);
 void wifi_init(void); 

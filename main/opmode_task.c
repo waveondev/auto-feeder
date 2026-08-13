@@ -132,9 +132,18 @@ static void Slid_closed_timer_callback(void* arg)
 {
     app_config_t* app_config = get_app_config();
 
+    if(app_config->sliding_close_mode)
+    {
+        if(loadcell_data_get() > 5.0f)
+        {
+            Slid_Close_Timer_Set(true, 60000);
+            ESP_LOGI(TAG, "잔여물 확인됨 ");
+            return;
+        }        
+    }
     if(Sliding_Front_Enable() || !Sliding_Back_Enable())
     {
-        if(!VL53L0X_Detect())
+        if(!VL53L0X_Detect(true))
         {
             Sliding_CCW(100);
             if(start_weight != 0)
@@ -156,6 +165,7 @@ static void Slid_weight_timer_callback(void* arg)
         {
             start_acc_motor_with_boost();
             ESP_LOGI(TAG,"start_weight = %.2f now = %.2f",start_weight, loadcell_data_get());
+            mqtt_queue_send(MESSEGE_DISPENSE);
             start_weight = 0.0f;
         }
         else
@@ -244,7 +254,7 @@ typedef enum{
 static FeederState_e FeederState = SLID_IN;
 bool feeder_mode_init(void)
 {
-    if(VL53L0X_Detect() && !Sliding_Back_Enable())
+    if(VL53L0X_Detect(false) && !Sliding_Back_Enable())
     {
         return false;
     }
@@ -290,7 +300,57 @@ void Open_Slid(void)
         {
             vTaskDelay(1000);
         }
+    }
+}
 
+// SMART 모드 내부 상태 머신 정의
+typedef enum {
+    SMART_IDLE,          // 대기 상태 (센서 없음, 모터 Off)
+    SMART_RUN_VERIFY,    // 즉시 구동 후 5초 유지 검증 상태 (모터 On)
+    SMART_RUN_STABLE,    // 5초 검증 통과 후 안정 구동 상태 (모터 On)
+} smart_state_t;
+static smart_state_t smart_state = SMART_IDLE;
+void Smart_Feeder(void)
+{
+    static uint32_t smart_timer_target = 0; // 각 상태별 마감 시한 틱 저장
+
+    bool sensor_detected = VL53L0X_Detect(true);
+    uint32_t current_tick = xTaskGetTickCount();
+
+    switch (smart_state)
+    {
+        case SMART_IDLE:
+            if (sensor_detected) 
+            {
+                smart_timer_target = current_tick + ((5*1000) / portTICK_PERIOD_MS);
+                smart_state = SMART_RUN_VERIFY;
+            }
+        break;
+
+        case SMART_RUN_VERIFY:
+            if (!sensor_detected) 
+            {
+                smart_state = SMART_IDLE;
+                ESP_LOGI(TAG, "SMART: Sensor lost before 5s. Motor STOPPED.");
+                break;
+            }
+
+            // 3. 5초 동안 센서가 짱짱하게 잘 버텼는지 확인
+            if ((int32_t)(smart_timer_target - current_tick) <= 0) 
+            {
+                // 5초 동안 급격하게 튀지 않고 무사히 통과 완료!
+                mqtt_queue_send(MESSEGE_ACCESS);
+                smart_state = SMART_RUN_STABLE;
+                ESP_LOGI(TAG, "SMART: 5-second verification SUCCESS. Stable running...");
+            }
+        break;
+
+        case SMART_RUN_STABLE:
+            if (!sensor_detected) 
+            {
+                smart_state = SMART_IDLE;
+            }
+        break;
     }
 }
 
@@ -305,7 +365,6 @@ static void Opmode_task(void *pvParameter)
     uint8_t Food_Max = 0;
     uint8_t Food_Empty_count = 0;
     while (1) {
-        bool sensor_detected = VL53L0X_Detect();
         uint32_t current_tick = xTaskGetTickCount();
 
         DBG_Resister_t* DBG_Resister = Debug_Get();
@@ -315,6 +374,7 @@ static void Opmode_task(void *pvParameter)
         }
         else
         {
+            Smart_Feeder();
             CleanMode();
             if(feeder_mode_flag)
             {
@@ -389,7 +449,7 @@ static void Opmode_task(void *pvParameter)
                             if(feed_diff >= gram-10)
                             {
                                 Feeder_coast();
-                                vTaskDelay(1000);
+                                vTaskDelay(2000);
                                 feed_diff = loadcell_data_get() - feed_start;
                                 if(feed_diff >= gram)
                                 {
@@ -406,6 +466,7 @@ static void Opmode_task(void *pvParameter)
 
                     break;
                     case FEED_END :
+                        mqtt_queue_send(MESSEGE_INTAKE);
                         Feeder_CCW();         
                         while(Feed_Front_Enable() == false)
                         {
@@ -434,7 +495,7 @@ static void Opmode_task(void *pvParameter)
                         }
                     break;
                     case FEED_MODE_MANUAL_PORTION:
-                        if(VL53L0X_Detect())
+                        if(VL53L0X_Detect(true))
                         {
                             Open_Slid();
                         }
@@ -453,7 +514,7 @@ static void Opmode_task(void *pvParameter)
                         }
                         else
                         {
-                            if(VL53L0X_Detect())
+                            if(VL53L0X_Detect(true))
                             {
                                 Open_Slid();
                             }

@@ -166,7 +166,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					app_config->op_mode = FEED_MODE_SCHEDULED_PORTION;
 					app_config->sliding_close_mode = 0;
 					app_config->motor_current_limit = 1200;
-					app_config->sound_effect_idx = 0;
+					app_config->motor_stuck_retry_count = 3;
 					app_config->food_low_limit = 10;
 					app_config->gate_way_rssi_th = -80;
 					app_config->hx1_scale = 1000.0f;

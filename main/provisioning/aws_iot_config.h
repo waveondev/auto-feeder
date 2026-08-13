@@ -180,12 +180,6 @@
     #define CLIENT_IDENTIFIER    DEVICE_SERIAL_NUMBER 
 #endif
 
-/**
- * @brief Size of the network buffer for MQTT packets. Must be large enough to
- * hold the GetCertificateFromCsr response, which, among other things, includes
- * a PEM encoded certificate.
- */
-#define NETWORK_BUFFER_SIZE       ( CONFIG_MQTT_NETWORK_BUFFER_SIZE )
 
 /**
  * @brief The name of the operating system that the application is running on.

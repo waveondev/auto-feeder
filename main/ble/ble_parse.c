@@ -247,7 +247,6 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
                 for (int i = 0; i < max_aps; i++) {
                     cJSON *ap_item = cJSON_CreateObject();
                     
-                    // 유나님의 ap_list 에서 데이터 추출!
                     cJSON_AddStringToObject(ap_item, "ssid", (char *)ap_list[i].ssid);
                     cJSON_AddNumberToObject(ap_item, "rssi", ap_list[i].rssi);
                     

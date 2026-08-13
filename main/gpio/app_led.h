@@ -13,6 +13,9 @@
 #define FEED_MODE_BIT   (1<<7)
 #define SLID_MODE_BIT   (1<<6)
 #define ACC_MODE_BIT   (1<<5)
+#define FEED_ERROR_BIT   (1<<4)
+#define SLID_ERROR_BIT   (1<<3)
+#define ACC_ERROR_BIT   (1<<2)
 void LED_Bright_Set(uint8_t value);
 bool TOF_enable(void);
 bool led_bit_status(uint16_t status);

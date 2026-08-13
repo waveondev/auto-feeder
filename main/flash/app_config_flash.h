@@ -9,7 +9,7 @@ typedef struct{
     uint32_t op_mode;
     uint32_t sliding_close_mode;
     uint32_t motor_current_limit;
-    uint32_t sound_effect_idx;
+    uint32_t motor_stuck_retry_count;
     uint32_t food_low_limit;
     int32_t gate_way_rssi_th;
     float hx1_scale;                 // counts per gram

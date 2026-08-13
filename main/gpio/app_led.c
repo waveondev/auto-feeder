@@ -81,7 +81,14 @@ bool lock_mode_enable(void)
 }
 bool motor_mode_enable(void)
 {
-    uint16_t motor_bit = (7 << 5); // 5, 6, 7번 비트 마스크 (0x00E0)
+    uint16_t motor_bit = (7 << 5); 
+    
+    // 0이 아니면 하나라도 1이 켜져 있다는 의미
+    return ((led_status_resister & motor_bit) != 0); 
+}
+bool motor_error_enable(void)
+{
+    uint16_t motor_bit = (7 << 2); 
     
     // 0이 아니면 하나라도 1이 켜져 있다는 의미
     return ((led_status_resister & motor_bit) != 0); 
@@ -183,7 +190,7 @@ void set_rgb_len_no_Breathing(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
 
 void app_tof_sensor_poll_100ms(void)
 {
-    if (VL53L0X_Detect()) 
+    if (VL53L0X_Detect(true)) 
     {
         led_bit_enable(TOF_DETECT_BIT); 
     } 
@@ -357,6 +364,10 @@ static void LED_task(void *pvParameter)
                     else 
                     #endif
                     if(food_empty_enable())
+                    {
+                        set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
+                    }
+                    else if(motor_error_enable())
                     {
                         set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
                     }

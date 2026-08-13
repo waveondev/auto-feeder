@@ -179,19 +179,10 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 {
     int target_index = -1;
     Tracker_Device_t* Tracker_target = Get_Tracker_Device(dev_info->addr);
-
-#if 0
-    printf(" addr             : ");
-    for (int i = 0; i < 6; i++)
-    {
-    printf("%02X", dev_info->addr[i]);
-    if (i < 5)
-        printf(":");
-    }
-    printf("\n");
-
-    printf(" name             : %s\n", dev_info->name);
-    printf(" rssi             : %d\n", dev_info->rssi);
+#if 1
+    ESP_LOGI(TAG, " addr             : %02X%02X%02X%02X%02X%02X",dev_info->addr[0],dev_info->addr[1],dev_info->addr[2],dev_info->addr[3],dev_info->addr[4],dev_info->addr[5]);
+    ESP_LOGI(TAG, " name             : %s", dev_info->name);
+    ESP_LOGI(TAG, " rssi             : %d", dev_info->rssi);
 #endif
     if(Tracker_target != NULL)
     {

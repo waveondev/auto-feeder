@@ -82,7 +82,7 @@ BaseType_t prvMQTTformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen,
                     }
                     else if (!strncmp(ag[2], "dri", 3))
                     {
-                        mqtt_queue_send(MESSEGE_DRINK);
+                        mqtt_queue_send(MESSEGE_INTAKE);
                     }
                     else if (!strncmp(ag[2], "dia", 3))
                     {

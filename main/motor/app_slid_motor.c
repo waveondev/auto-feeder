@@ -175,14 +175,15 @@ typedef enum
 static void slidmotor_boost_task(void *pvParameters)
 {
     slid_motor_boost_args_t received_data;
-    if(Sliding_Back_Enable())
-        Sliding_CCW(100);
+      
+
+    app_config_t* app_config = get_app_config();
+    uint32_t slid_stuck_count = 0;
     while(1)
     {
         if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
-            ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", 
-
-                     received_data.target_percentage, received_data.Motor_Motion);
+            ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", received_data.target_percentage, received_data.Motor_Motion);
+            slid_stuck_count = 0;
             led_bit_enable(SLID_MODE_BIT);
             int target_percentage = received_data.target_percentage;
 
@@ -216,35 +217,44 @@ static void slidmotor_boost_task(void *pvParameters)
         }
         if(Motor_enable == true)
         {
-            if(GetSlid_ADC() > 500)
+            if(slid_stuck_count > app_config->motor_stuck_retry_count)
             {
-                set_slid_motor_speed_percent(0, true);
-                vTaskDelay(500);
-                set_slid_motor_speed_percent(received_data.target_percentage, !Motor_CW);
-                vTaskDelay(500);
-                set_slid_motor_speed_percent(received_data.target_percentage, Motor_CW);
-            }            
-            if(Motor_CW == true)
-            {
-                if(Sliding_Front_Enable())
-                {
-      
-                    Slid_State = SLID_OPEN;
-                    Sliding_coast();
-                    Motor_enable = false;
-                }
+                Sliding_coast();
+                Motor_enable = false;
             }
             else
             {
-                if(Sliding_Back_Enable())
+                if(GetSlid_ADC() > 500)
                 {
-                    Sliding_coast();
-                    
-                    Slid_State = SLID_CLOSE;
-                    Motor_enable = false;
-                }  
+                    slid_stuck_count++;
+                    set_slid_motor_speed_percent(0, true);
+                    vTaskDelay(500);
+                    set_slid_motor_speed_percent(received_data.target_percentage, !Motor_CW);
+                    vTaskDelay(500);
+                    set_slid_motor_speed_percent(received_data.target_percentage, Motor_CW);
+                }            
+                if(Motor_CW == true)
+                {
+                    if(Sliding_Front_Enable())
+                    {
+                        Slid_State = SLID_OPEN;
+                        Sliding_coast();
+                        Motor_enable = false;
+                    }
+                }
+                else
+                {
+                    if(Sliding_Back_Enable())
+                    {
+                        Sliding_coast();   
+                        Slid_State = SLID_CLOSE;
+                        Motor_enable = false;
+                    }  
+                }
             }
+            
         }
+
     }
 }
 
@@ -305,7 +315,7 @@ void init_motor_ledc(void) {
         ESP_LOGE(TAG, "Error creating slidmotor_boost_task on Core 1");
     }
     #endif
-
+    Sliding_CCW(100);
     init_feed_motor();
     init_acc_motor();
 }

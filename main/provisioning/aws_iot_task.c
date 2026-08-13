@@ -23,11 +23,26 @@ static esp_timer_handle_t Health_timer;
 #define AWS_IOT_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 4)
 extern int aws_iot_provisioning_main( int argc, char ** argv );
 // 15분 = 15분 * 60초 * 1,000,000us
-#define TIMER_15_MIN_IN_US   (15ULL * 60ULL * 1000000ULL)
+
+#define TIMER_1_MIN_IN_US    (60ULL * 1000000ULL)
+#define TIMER_15_MIN_IN_US   (15ULL * TIMER_1_MIN_IN_US)
+
+
+
+
 
 static void Health_timer_callback(void* arg)
 {
     mqtt_queue_send(MESSEGE_HEALTH);
+    //mqtt_queue_send(AWS_MESSEGE_AWS_JOBS_GET);
+
+    
+    if (esp_timer_is_active(Health_timer)) {
+        esp_timer_stop(Health_timer);
+    } 
+
+    esp_timer_start_once(Health_timer, TIMER_15_MIN_IN_US);
+
 }
 
 bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd)
@@ -92,7 +107,7 @@ static void aws_iot_main_entry(void *pvParameters)
     };
     ESP_ERROR_CHECK(esp_timer_create(&Health_timer_args, &Health_timer));
 
-    int i = 0;
+    int provisioning_count = 0;
     messege_tx_mqtt_cmd_e cmd;
     tracker_mqtt_packet_t mqtt_packet;
 
@@ -118,13 +133,15 @@ static void aws_iot_main_entry(void *pvParameters)
         while(aws_iot_provisioning_main(0, NULL) != EXIT_SUCCESS)
         {
             vTaskDelay(pdMS_TO_TICKS(3000)); /* 3초 대기 */
-            i++;
-            ESP_LOGI(TAG, "provisioning retry count = %d", i);
+            provisioning_count++;
+            ESP_LOGI(TAG, "provisioning retry count = %d", provisioning_count);
+            if(provisioning_count > 10)
+                esp_restart();
         }
 
 
         // 2) MQTT 연결이 붙었으니 헬스 타이머 동작 시작!
-        esp_timer_start_periodic(Health_timer, TIMER_15_MIN_IN_US);
+        esp_timer_start_once(Health_timer, TIMER_1_MIN_IN_US);
 
         ESP_LOGI(TAG, "=== MQTT 송수신 메인 루프 진입 ===");
 

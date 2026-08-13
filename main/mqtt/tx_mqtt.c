@@ -7,6 +7,8 @@
 #include "aws_iot_task.h"
 #include "app_config_flash.h"
 #include "device_config.h"
+#include "clock.h"
+
 static const char *TAG = __FILE__;
 
 Motion_Packet_t motion_res;
@@ -72,9 +74,12 @@ static cJSON* Get_cJSON_Header(messege_tx_mqtt_cmd_e cmd)
         case MESSEGE_ACCESS:
             cJSON_AddStringToObject(root, "event_type", "access");
         break;
-        case MESSEGE_DRINK:
-            cJSON_AddStringToObject(root, "event_type", "drink");
+        case MESSEGE_INTAKE:
+            cJSON_AddStringToObject(root, "event_type", "intake");
         break;
+        case MESSEGE_DISPENSE:
+            cJSON_AddStringToObject(root, "event_type", "dispense");
+        break;        
         case MESSEGE_DIAGNOSTICS:
             cJSON_AddStringToObject(root, "event_type", "diagnostics");
         break;
@@ -114,14 +119,41 @@ static cJSON* Get_cJSON_Header(messege_tx_mqtt_cmd_e cmd)
 
     return root;
 }
+#include "esp_wifi.h"
+#include "esp_sntp.h"  // v5.x 호환용
+typedef struct {
+    const char *item;
+    int result;
+    int error_code;
+} test_item_t;
 
 
 static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
 {
+    test_item_t items[] = 
+    {
+        {"wifi_ble", 0, 0},
+        {"tof",      0, 0},
+        {"loadcell", 0, 0},
+        {"sliding_motor", 0, 0},
+        {"vacuum_pump", 0, 0},
+        {"feed", 0, 0}
+    };
     cJSON *data_obj = cJSON_CreateObject();
     uint8_t mac_byte[6];
     char dynamicMacStr[13]; // 12자리 MAC 문자열 + 널 종료 문자(\0)
     cJSON *subsystems;
+    uint32_t uptime = Clock_GetTimeMs() / 1000;
+    wifi_ap_record_t ap_info;
+    int8_t rssi = 0;
+    // 현재 연결된 AP 정보 가져오기 (성공 시 ESP_OK 반환)
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) 
+    {
+        ESP_LOGI(TAG, "SSID: %s", ap_info.ssid);
+        ESP_LOGI(TAG, "RSSI: %d dBm", ap_info.rssi); // 예: -55 dBm
+        rssi = ap_info.rssi;
+    } 
+
     if(data_obj == NULL)
         return data_obj;
 
@@ -136,15 +168,21 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
                     mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
 
             cJSON_AddStringToObject(data_obj, "mac", dynamicMacStr);
-            cJSON_AddStringToObject(data_obj, "hw_rev", "r3.1");
-            
-            /* 🚨 필수 추가 필드: registration에는 home_id와 paired_at이 꼭 필요합니다 */
-            cJSON_AddStringToObject(data_obj, "home_id", "home_test_01");
-            cJSON_AddNumberToObject(data_obj, "paired_at", 1747396800);
+            cJSON_AddStringToObject(data_obj, "hw_rev", CONFIG_HW_REV);
+            time_t now;
+            time(&now); // 1970년 1월 1일 이후 경과된 초(sec)를 'now' 변수에 담음
+            if (now < 1600000000) {
+                // 아직 SNTP 시간 동기화가 안 된 경우
+                // 백엔드 서버가 대신 처리하도록 0을 보내거나 기본값 설정
+                cJSON_AddNumberToObject(data_obj, "paired_at", 0);
+            } else {
+                // 정상 동기화된 경우 현재 시간 전송
+                cJSON_AddNumberToObject(data_obj, "paired_at", (double)now);
+            }
         break;
         case MESSEGE_BOOT:
             cJSON_AddStringToObject(data_obj, "boot_reason", "power_on");
-            cJSON_AddNumberToObject(data_obj, "uptime_sec", 0);
+            cJSON_AddNumberToObject(data_obj, "uptime_sec", uptime);
             
             cJSON_AddStringToObject(data_obj, "power_source", "ADAPTER");
             cJSON_AddNumberToObject(data_obj, "reset_reason", 0);
@@ -158,8 +196,8 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
 // 🔧 수정: 문자열이 아닌 Float(숫자) 타입으로 전달해야 함
             cJSON_AddNumberToObject(data_obj, "start_weight", 100.2);
         break;
-        case MESSEGE_DRINK:
-            cJSON_AddStringToObject(data_obj, "drink_id", "550e8400-e29b-41d4-a716-446655440000");
+        case MESSEGE_INTAKE:
+            cJSON_AddStringToObject(data_obj, "intake_id", "550e8400-e29b-41d4-a716-446655440000");
             cJSON_AddStringToObject(data_obj, "session_type", "unknown");
 
             // 1. access_id_refs: 아이템을 추가하지 않고 빈 배열 그대로 루트에 전달
@@ -167,6 +205,10 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
             //cJSON_AddItemToArray(access_id_refs, cJSON_CreateString("acc_001"));
             //cJSON_AddItemToArray(access_id_refs, cJSON_CreateString("acc_002"));
             cJSON_AddItemToObject(data_obj, "access_id_refs", access_id_refs);
+
+            cJSON *dispense_id_ref = cJSON_CreateArray();
+
+            cJSON_AddItemToObject(data_obj, "dispense_id_ref", dispense_id_ref);
 
             // 2. participants: 아이템을 추가하지 않고 빈 배열 그대로 루트에 전달
             cJSON *participants = cJSON_CreateArray();
@@ -188,74 +230,45 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
             // 5. 나머지 숫자 및 선택 필드 추가
             cJSON_AddNumberToObject(data_obj, "start_weight", 500.5);   // Float
             cJSON_AddNumberToObject(data_obj, "end_weight", 420.2);     // Float
-            cJSON_AddNumberToObject(data_obj, "total_intake_ml", 80.3); // Float
+            cJSON_AddNumberToObject(data_obj, "weight_delta", 80.3); // Float
             cJSON_AddNumberToObject(data_obj, "duration_sec", 165);     // Integer
-            
-            // 선택 필드 (조건에 따라 추가 안 해도 됨)
-            cJSON_AddStringToObject(data_obj, "alert_type", "NONE");
         break;
         case MESSEGE_DIAGNOSTICS:
             // 2. 공통 스칼라 필드 추가
 
-            cJSON_AddNumberToObject(data_obj, "uptime_sec", 174739);
+            cJSON_AddNumberToObject(data_obj, "uptime_sec", uptime);
             cJSON_AddNumberToObject(data_obj, "reset_reason", 0);
-            cJSON_AddNumberToObject(data_obj, "rssi_dbm", -70);
+            cJSON_AddNumberToObject(data_obj, "rssi_dbm", rssi);
 
             subsystems = cJSON_CreateObject();
-            cJSON_AddStringToObject(subsystems, "water_supply", "ok");
-            cJSON_AddStringToObject(subsystems, "motor.pump", "ok"); // 펌프 에러 발생
-            cJSON_AddStringToObject(subsystems, "loadcell", "ok");
-            cJSON_AddStringToObject(subsystems, "tof", "ok");
-            cJSON_AddStringToObject(subsystems, "ble", "ok");
-            cJSON_AddStringToObject(subsystems, "uv", "ok");
-            cJSON_AddStringToObject(subsystems, "filter.water", "ok");
-            cJSON_AddStringToObject(subsystems, "filter.debris", "ok");
+            cJSON_AddStringToObject(subsystems, "weight", "ok");
+
+            cJSON_AddStringToObject(subsystems, "motor.screw", "ok"); // 펌프 에러 발생
+            cJSON_AddStringToObject(subsystems, "motor.sliding", "ok"); // 펌프 에러 발생
+            cJSON_AddStringToObject(subsystems, "motor.vacuum", "ok"); // 펌프 에러 발생
+
+            cJSON_AddStringToObject(subsystems, "vacuum", "ok");
+            cJSON_AddStringToObject(subsystems, "door", "ok");
+            cJSON_AddStringToObject(subsystems, "feed_supply", "ok");
             cJSON_AddStringToObject(subsystems, "power",         "ok");
-            if (water_fault_code_send & WATER_LOW_FAULT) {
-               cJSON_AddNumberToObject(subsystems, "water_level", 1);
-            }
-            else
-               cJSON_AddNumberToObject(subsystems, "water_level", 0);    
-            app_config_t* app_config = get_app_config();
-            cJSON_AddNumberToObject(subsystems, "current_mode", app_config->op_mode); // Current Mode 추가        
+
             cJSON_AddItemToObject(data_obj, "subsystems", subsystems);
 
-            // 🔧 수정: W-100 fault_code 적용 (PUMP_ERR)
+
             cJSON_AddStringToObject(data_obj, "mode", "operational");
+            cJSON_AddNumberToObject(data_obj, "stage", 1);
 
-            if(water_fault_code_send & WATER_BOWL_DETACHED_FAULT)
-            {
-                cJSON_AddStringToObject(data_obj, "alert_level", "critical");
-                cJSON_AddStringToObject(data_obj, "fault_code", "BOWL_DETACHED");
-            }
-            else if(water_fault_code_send & WATER_FILTER_WATER_EX)
-            {
-                cJSON_AddStringToObject(data_obj, "alert_level", "normal");
-                cJSON_AddStringToObject(data_obj, "fault_code", "FILTER_WATER_EXPIRED");
-            }
-            else if(water_fault_code_send & WATER_FILTER_DEBRIS_EX)
-            {
-                cJSON_AddStringToObject(data_obj, "alert_level", "normal");
-                cJSON_AddStringToObject(data_obj, "fault_code", "FILTER_DEBRIS_EXPIRED");
-            }
-            else if(water_fault_code_send & WATER_LOW_FAULT)
-            {
-                cJSON_AddStringToObject(data_obj, "alert_level", "critical");
-                cJSON_AddStringToObject(data_obj, "fault_code", "WATER_EMPTY");
-            }
-            else if(water_fault_code_send & WATER_SPLASHING_FAULT)
-            {
-                cJSON_AddStringToObject(data_obj, "alert_level", "normal");
-                cJSON_AddStringToObject(data_obj, "fault_code", "SPLASHING");
-                cJSON_AddStringToObject(data_obj, "alert_type", "SPLASHING");
-            }
-            else
-            {
-                cJSON_AddStringToObject(data_obj, "alert_level", "normal");
-                cJSON_AddStringToObject(data_obj, "fault_code", "PUMP_ERR");
+            cJSON *results = cJSON_CreateArray();
+
+            for (int i = 0; i < sizeof(items)/sizeof(items[0]); i++) {
+                cJSON *obj = cJSON_CreateObject();
+                cJSON_AddStringToObject(obj, "item", items[i].item);
+                cJSON_AddNumberToObject(obj, "result", items[i].result);
+                cJSON_AddNumberToObject(obj, "error_code", items[i].error_code);
+                cJSON_AddItemToArray(results, obj);
             }
 
-            cJSON_AddStringToObject(data_obj, "affected_subsystem", "motor.pump");
+            cJSON_AddStringToObject(data_obj, "affected_subsystem", "door");
 
             // context 객체
             cJSON *context = cJSON_CreateObject();
@@ -264,31 +277,36 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
             cJSON_AddItemToObject(data_obj, "context", context);
         break;
         case MESSEGE_HEALTH:
-      // 🔧 수정: W-100 서브시스템 정의 적용
-            // 2. 공통 스칼라 필드 추가
-            cJSON_AddNumberToObject(data_obj, "uptime_sec", 174739);
+        
+            cJSON_AddNumberToObject(data_obj, "uptime_sec", uptime);
             cJSON_AddNumberToObject(data_obj, "reset_reason", 0);
-            cJSON_AddNumberToObject(data_obj, "rssi_dbm", -70);
+            cJSON_AddNumberToObject(data_obj, "rssi_dbm", rssi);
+
             subsystems = cJSON_CreateObject();
-            cJSON_AddStringToObject(subsystems, "water_supply", "ok");
-            cJSON_AddStringToObject(subsystems, "motor.pump", "ok");
-            cJSON_AddStringToObject(subsystems, "loadcell", "ok");
-            cJSON_AddStringToObject(subsystems, "tof", "ok");
-            cJSON_AddStringToObject(subsystems, "ble", "ok");
-            cJSON_AddStringToObject(subsystems, "uv", "ok");
-            cJSON_AddStringToObject(subsystems, "filter.water", "ok");
-            cJSON_AddStringToObject(subsystems, "filter.debris", "ok");
+            cJSON_AddStringToObject(subsystems, "weight", "ok");
+
+            cJSON_AddStringToObject(subsystems, "motor.screw", "ok"); 
+            cJSON_AddStringToObject(subsystems, "motor.sliding", "ok"); 
+            cJSON_AddStringToObject(subsystems, "motor.vacuum", "ok"); 
+
+            cJSON_AddStringToObject(subsystems, "vacuum", "ok");
+            cJSON_AddStringToObject(subsystems, "door", "ok");
+            cJSON_AddStringToObject(subsystems, "feed_supply", "ok");
             cJSON_AddStringToObject(subsystems, "power",         "ok");
-            cJSON_AddItemToObject(data_obj, "subsystems", subsystems);   
+
+            cJSON_AddItemToObject(data_obj, "subsystems", subsystems);
 
             // 🔧 필수 추가: W-100 헬스 측정 데이터 항목 (§2.6 참조)
             cJSON_AddStringToObject(data_obj, "power_source", "ADAPTER");
-            cJSON_AddNumberToObject(data_obj, "water_level", 0);                // 0:충분, 1:부족, 2:없음
-            cJSON_AddNumberToObject(data_obj, "pump_status", 0);                // 0:정상, 1:결착불량/이물질
-            cJSON_AddNumberToObject(data_obj, "water_filter_life_pct", 95);     // 정수 필터 잔여수명 (%)
-            cJSON_AddNumberToObject(data_obj, "debris_filter_life_pct", 80);    // 이물질 필터 잔여수명 (%)
-            cJSON_AddNumberToObject(data_obj, "uv_status", 0);                  // 0:미소독, 1:소독중, 2:일시중지
-            cJSON_AddNumberToObject(data_obj, "current_mode", 0);               // 0:급수, 1:정지, 2:스마트
+            cJSON_AddNumberToObject(data_obj, "food_level", 0);                
+            cJSON_AddNumberToObject(data_obj, "vacuum", 0);                
+            cJSON_AddNumberToObject(data_obj, "door_status", 0);     
+            cJSON_AddNumberToObject(data_obj, "battery_voltage", 100.0);    
+            cJSON_AddNumberToObject(data_obj, "adapter_voltage", 100.0);                  
+            cJSON_AddNumberToObject(data_obj, "free_heap", 0);               
+        break;
+        case AWS_MESSEGE_AWS_JOBS_GET:
+            // 빈 cJSON 객체(data_obj) 그대로 반환
         break;
         default:
         cJSON_Delete(data_obj);
@@ -439,16 +457,7 @@ static cJSON* Get_cJSON_Data_for_Tracker(messege_tx_mqtt_cmd_e cmd, tracker_mqtt
 
 void Send_cJSON_Messege(messege_tx_mqtt_cmd_e cmd)
 {
-    cJSON* root = Get_cJSON_Header(cmd);
-    if(root == NULL)
-        return;
-
-    cJSON* data = Get_cJSON_Data(cmd);
-    if(data == NULL)
-    {
-        cJSON_Delete(root);
-        return;
-    }
+    cJSON* root = NULL;
 
     uint8_t mac_byte[6];
     char dynamicMacStr[13]; // 12자리 MAC 문자열 + 널 종료 문자(\0)
@@ -460,8 +469,27 @@ void Send_cJSON_Messege(messege_tx_mqtt_cmd_e cmd)
     snprintf(dynamicMacStr, sizeof(dynamicMacStr), "%02X%02X%02X%02X%02X%02X",
             mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
 
+// 1. AWS 예약 기능용 메시지 처리 (Header 감싸지 않음)
+    if (cmd == AWS_MESSEGE_AWS_JOBS_GET) 
+    {
+        // Get_cJSON_Data()가 반환하는 JSON 객체를 그대로 root로 사용!
+        root = Get_cJSON_Data(cmd);
+        if(root == NULL)
+            return;
+    } 
+    else 
+    {
+        root = Get_cJSON_Header(cmd);
+        if (root == NULL) return;
 
-    cJSON_AddItemToObject(root, "data", data);
+        cJSON* data = Get_cJSON_Data(cmd);
+        if (data == NULL) {
+            cJSON_Delete(root);
+            return;
+        }
+        cJSON_AddItemToObject(root, "data", data);
+    }
+
     /* 공백 없이 압축된 JSON 문자열 생성 */
     char *payloadBuf = cJSON_PrintUnformatted(root);
     
@@ -481,14 +509,20 @@ void Send_cJSON_Messege(messege_tx_mqtt_cmd_e cmd)
             case MESSEGE_ACCESS:
                 snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_ACCESS,dynamicMacStr);
             break;
-            case MESSEGE_DRINK:
-                snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_DRINK,dynamicMacStr);
+            case MESSEGE_DISPENSE:
+                snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_DISPENSE,dynamicMacStr);
+            break;
+            case MESSEGE_INTAKE:
+                snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_INTAKE,dynamicMacStr);
             break;
             case MESSEGE_DIAGNOSTICS:
                 snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_DIAGNOSTICS,dynamicMacStr);
             break;
             case MESSEGE_HEALTH:
                 snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_HEALTH,dynamicMacStr);
+            break;
+            case AWS_MESSEGE_AWS_JOBS_GET:
+                snprintf(pub_topic,sizeof(pub_topic),AWS_RX_TOPIC_JOBS_NOTIFY,dynamicMacStr);
             break;
             default:
                 pubTopic = NULL;
@@ -560,10 +594,10 @@ void Send_cJSON_Messege_for_tracker(tracker_mqtt_packet_t* tracker_mqtt_packet)
         switch(cmd)
         {
             case TRACKER_MESSEGE_ACTIVITY:
-                snprintf(pub_topic,sizeof(pub_topic),TRACKER_RX_TOPIC_ACTIVITY,dynamicMacStr);
+                snprintf(pub_topic,sizeof(pub_topic),TRACKER_TX_TOPIC_ACTIVITY,dynamicMacStr);
             break;
             case TRACKER_MESSEGE_HEALTH:
-                snprintf(pub_topic,sizeof(pub_topic),TRACKER_RX_TOPIC_HEALTH,dynamicMacStr);
+                snprintf(pub_topic,sizeof(pub_topic),TRACKER_TX_TOPIC_HEALTH,dynamicMacStr);
             break;
             default:
                 pubTopic = NULL;

@@ -96,7 +96,7 @@ void Wifi_Connect(const char* target_ssid, const char* target_password)
         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
         pdFALSE,
         pdFALSE,
-        pdMS_TO_TICKS(15000) // 💡 15초(15000ms) 타임아웃 방어 로직
+        pdMS_TO_TICKS(portMAX_DELAY)
     );
 
     // 8. 대기 결과에 따른 처리
@@ -145,43 +145,41 @@ void wifi_init_sta_static_ip(char* WIFI_SSID, char* WIFI_PASS)
     ESP_LOGI(TAG, "Wi-Fi STA static IP setup done");
 }*/
 
-wifi_ap_record_t ap_list[WIFI_MAX_VALUE];
-
+wifi_ap_record_t* ap_list = NULL;
+uint16_t total_found_count = 0; // 중복 제거 후 최종적으로 모은 AP 개수
 uint16_t remove_duplicate_best_rssi(wifi_ap_record_t *list, uint16_t count)
 {
+
     uint16_t new_count = 0;
 
-    for(int i=0; i<count; i++)
+    for (int i = 0; i < count; i++)
     {
         int found = -1;
 
-        for(int j=0; j<new_count; j++)
+        for (int j = 0; j < new_count; j++)
         {
-            if(strcmp((char*)list[i].ssid,
-                      (char*)list[j].ssid)==0)
+// SSID 최대 길이는 32바이트이므로 안전하게 strncmp 사용
+            if (strncmp((char*)list[i].ssid, (char*)list[j].ssid, sizeof(list[i].ssid)) == 0)
             {
                 found = j;
                 break;
             }
         }
 
-
-        if(found >= 0)
+        if (found >= 0)
         {
             // 더 강한 신호로 교체
-            if(list[i].rssi > list[found].rssi)
+            if (list[i].rssi > list[found].rssi)
             {
-                memcpy(&list[found],
-                       &list[i],
-                       sizeof(wifi_ap_record_t));
+                memcpy(&list[found], &list[i], sizeof(wifi_ap_record_t));
             }
         }
         else
         {
-            memcpy(&list[new_count],
-                   &list[i],
-                   sizeof(wifi_ap_record_t));
-
+            if (i != new_count)
+            {
+                memcpy(&list[new_count], &list[i], sizeof(wifi_ap_record_t));
+            }
             new_count++;
         }
     }
@@ -191,6 +189,12 @@ uint16_t remove_duplicate_best_rssi(wifi_ap_record_t *list, uint16_t count)
 
 uint16_t wifi_scan_start(void)
 {
+    if (ap_list != NULL) {
+        free(ap_list);
+        ap_list = NULL;
+    }
+
+    total_found_count = 0;
     // 스캔 설정
     wifi_scan_config_t scan_config = {
         .ssid = NULL,
@@ -201,10 +205,15 @@ uint16_t wifi_scan_start(void)
         .scan_time.active.min = 0,
         .scan_time.active.max = 0
     };
+// 1. 최대 30개 크기 버퍼 임시 할당
+    wifi_ap_record_t *temp_ap_list = malloc(sizeof(wifi_ap_record_t) * WIFI_MAX_VALUE);
+    if (temp_ap_list == NULL) {
+        ESP_LOGE(TAG, "임시 스캔 버퍼 동적 할당 실패");
+        return 0;
+    }
 
     // 전역/기존 버퍼 초기화
-    memset(ap_list, 0, sizeof(ap_list));
-    uint16_t total_found_count = 0; // 중복 제거 후 최종적으로 모은 AP 개수
+    memset(temp_ap_list, 0, sizeof(wifi_ap_record_t) * WIFI_MAX_VALUE);
 
     for (int scan_iter = 1; scan_iter <= 3; scan_iter++) {
         ESP_LOGI(TAG, "[스캔 %d회차] Wi-Fi 스캔 시작...", scan_iter);
@@ -232,11 +241,9 @@ uint16_t wifi_scan_start(void)
             uint16_t fetch_num = current_scan_num;
             esp_wifi_scan_get_ap_records(&fetch_num, temp_records);
 
-            // ⭐️ 기존에 이미 모아둔 ap_list 뒤에 새로 찾은 데이터 이어 붙이기
-            // ap_list 버퍼가 넘치지 않도록 방어벽 설정 (WIFI_MAX_VALUE 이하로 제한)
             for (int i = 0; i < fetch_num; i++) {
                 if (total_found_count < WIFI_MAX_VALUE) {
-                    ap_list[total_found_count] = temp_records[i];
+                    temp_ap_list[total_found_count] = temp_records[i];
                     total_found_count++;
                 } else {
                     break;
@@ -247,7 +254,7 @@ uint16_t wifi_scan_start(void)
             free(temp_records);
 
             // ⭐️ 이어 붙인 전체 리스트에서 중복 제거 및 정렬 수행
-            total_found_count = remove_duplicate_best_rssi(ap_list, total_found_count);
+            total_found_count = remove_duplicate_best_rssi(temp_ap_list, total_found_count);
         }
 
         ESP_LOGI(TAG, "[스캔 %d회차 결과] 현재까지 중복 제거 후 수집된 AP: %d개 / 목표: %d개", 
@@ -263,7 +270,25 @@ uint16_t wifi_scan_start(void)
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     }
+// 2. 검색된 AP가 0개인 경우
+    if (total_found_count == 0) {
+        free(temp_ap_list);
+        ap_list = NULL;
+        ESP_LOGW(TAG, "스캔 완료: 발견된 AP가 없습니다.");
+        return 0;
+    }
 
+    // 3. 실제 찾은 개수만큼 메모리 축소 재할당
+    wifi_ap_record_t *realloc_ptr = realloc(temp_ap_list, sizeof(wifi_ap_record_t) * total_found_count);
+
+    if (realloc_ptr != NULL) {
+        // realloc 성공 시 새 포인터 할당
+        ap_list = realloc_ptr;
+    } else {
+        // realloc 실패 시 원래 축소 전 버퍼(temp_ap_list)를 그대로 유지
+        ap_list = temp_ap_list;
+    }
+    
     ESP_LOGI(TAG, "최종 스캔 종료: 총 %d 개의 AP 확정", total_found_count);
     return total_found_count;
 }
@@ -323,6 +348,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
             if (s_allow_reconnect) {
                 if (s_retry_num < MAXIMUM_RETRY) {
+                    vTaskDelay(pdMS_TO_TICKS(300));
                     esp_wifi_connect();
                     s_retry_num++;
                     ESP_LOGI(TAG, "연결 실패, 재시도 중... (%d/%d)", s_retry_num, MAXIMUM_RETRY);
