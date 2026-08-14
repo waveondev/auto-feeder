@@ -4,6 +4,7 @@
 #include "stdio.h"
 #include "esp_mac.h"
 #include "cJSON.h"
+#include "app_nvs.h"
 static const char *TAG = __FILE__;
 
 static uint8_t topic_count = 0;
@@ -268,6 +269,84 @@ bool mqtt_subscribe_init(void)
     return true;
 }
 
+
+
+
+static void registration_callback(cJSON* result)
+{
+    if(strcmp(result->valuestring, "ok") == 0) 
+    {
+        ESP_LOGI(TAG,"[BLE_SEC] 백엔드 등록 성공 수신 완료! 앱에 prov_complete 전송");
+
+        // MAC 주소를 동적으로 획득하여 thing_name 조립
+        write_nvs_registration_flag( true );
+        uint8_t mac_byte[6];
+        char dynamicMacStr[13];
+        esp_read_mac(mac_byte, ESP_MAC_WIFI_STA);
+        snprintf(dynamicMacStr, sizeof(dynamicMacStr), "%02X%02X%02X%02X%02X%02X",
+                mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
+
+        char payload_buf[128];
+        snprintf(payload_buf, sizeof(payload_buf), "{\"thing_name\":\"%s_%s\"}",CONFIG_DEVICE_PREFIX, dynamicMacStr);
+
+        // 3. 앱에 암호화된 최종 완료 통보 쏘기
+        ble_send_encrypted_event("prov_complete", payload_buf);
+    }
+    else
+    {
+        ESP_LOGI(TAG, "[BLE_SEC] 백엔드 등록 실패"  );
+    }
+}
+
+static void boot_callback(cJSON* result)
+{
+    if(strcmp(result->valuestring, "ok") == 0) 
+    {
+        ESP_LOGI(TAG,"%s ok", result->valuestring);
+    }
+    else
+    {
+        ESP_LOGI(TAG,"other - %s ", result->valuestring);
+    }
+}
+
+static void access_callback(cJSON* result)
+{
+    if(strcmp(result->valuestring, "ok") == 0) 
+    {
+        ESP_LOGI(TAG,"%s ok", result->valuestring);
+    }
+    else
+    {
+        ESP_LOGI(TAG,"other - %s ", result->valuestring);
+    }
+}
+
+static void diagnostics_callback(cJSON* result)
+{
+    if(strcmp(result->valuestring, "ok") == 0) 
+    {
+        ESP_LOGI(TAG,"%s ok", result->valuestring);
+    }
+    else
+    {
+        ESP_LOGI(TAG,"other - %s ", result->valuestring);
+    }
+}
+
+static void health_callback(cJSON* result)
+{
+    if(strcmp(result->valuestring, "ok") == 0) 
+    {
+        ESP_LOGI(TAG,"%s ok", result->valuestring);
+    }
+    else
+    {
+        ESP_LOGI(TAG,"other - %s ", result->valuestring);
+    }
+}
+
+
 void mqtt_rx_messege(MQTTPublishInfo_t * pPublishInfo)
 {
     if ( pPublishInfo->pPayload != NULL && pPublishInfo->payloadLength > 0 )
@@ -291,29 +370,24 @@ void mqtt_rx_messege(MQTTPublishInfo_t * pPublishInfo)
                 {
                     if (strcmp(event_type->valuestring, "registration") == 0)       
                     {
-                        if(strcmp(result->valuestring, "ok") == 0) 
-                        {
-                            ESP_LOGI(TAG,"[BLE_SEC] 백엔드 등록 성공 수신 완료! 앱에 prov_complete 전송");
-
-                            // MAC 주소를 동적으로 획득하여 thing_name 조립
-                            uint8_t mac_byte[6];
-                            char dynamicMacStr[13];
-                            esp_read_mac(mac_byte, ESP_MAC_WIFI_STA);
-                            snprintf(dynamicMacStr, sizeof(dynamicMacStr), "%02X%02X%02X%02X%02X%02X",
-                                    mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
-
-                            char payload_buf[128];
-                            snprintf(payload_buf, sizeof(payload_buf), "{\"thing_name\":\"%s_%s\"}",CONFIG_DEVICE_PREFIX, dynamicMacStr);
-
-                            // 3. 앱에 암호화된 최종 완료 통보 쏘기
-                            ble_send_encrypted_event("prov_complete", payload_buf);
-                        }
-                        else
-                        {
-                            ESP_LOGI(TAG, "[BLE_SEC] 백엔드 등록 실패"  );
-                        }
-                        // Registration ACK 성공 처리
+                        registration_callback(result);
                     }
+                    else if (strcmp(event_type->valuestring, "boot") == 0)       
+                    {
+                        boot_callback(result);
+                    }   
+                    else if (strcmp(event_type->valuestring, "access") == 0)       
+                    {
+                        access_callback(result);
+                    }      
+                    else if (strcmp(event_type->valuestring, "diagnostics") == 0)       
+                    {
+                        diagnostics_callback(result);
+                    }                               
+                    else if (strcmp(event_type->valuestring, "health") == 0)       
+                    {
+                        health_callback(result);
+                    }                                                   
                 }
                 cJSON_Delete(root);
             }

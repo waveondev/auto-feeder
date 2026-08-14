@@ -657,11 +657,8 @@ int aws_iot_provisioning_main( int argc,
                     connectionEstablished = true;
                     if (is_already_registered == false)
                     {
-                        write_nvs_registration_flag( true );
                         LogInfo( ( "[최초 연결 완료] 백엔드에 기기 등록(REGISTRATION) 요청을 큐에 주입합니다." ) );
                         mqtt_queue_send(MESSEGE_REGISTRATION);
-                        // 💡 팁: 백엔드에서 등록 완료 응답(Callback)을 성공적으로 수신하는 시점 
-                        //        또는 이 패킷이 완전히 날아간 직후에 write_nvs_registration_flag(true);를 해주면 완벽합니다.
                     }
                     else
                     {

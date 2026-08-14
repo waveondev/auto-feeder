@@ -7,15 +7,16 @@
 #define HARDWARE_ERR_BIT (1<<13)
 #define SENSE_ERR_BIT   (1<<12)
 #define TOF_DETECT_BIT  (1<<11)
-#define FOOD_EMPTY_BIT  (1<<10)
-#define FOOD_DISCHARGE_BIT  (1<<9)
-#define LOCK_MODE_BIT   (1<<8)
-#define FEED_MODE_BIT   (1<<7)
-#define SLID_MODE_BIT   (1<<6)
-#define ACC_MODE_BIT   (1<<5)
-#define FEED_ERROR_BIT   (1<<4)
-#define SLID_ERROR_BIT   (1<<3)
-#define ACC_ERROR_BIT   (1<<2)
+#define FOOD_LOW_BIT  (1<<10)
+#define FOOD_EMPTY_BIT  (1<<9)
+#define FOOD_DISCHARGE_BIT  (1<<8)
+#define LOCK_MODE_BIT   (1<<7)
+#define FEED_MODE_BIT   (1<<6)
+#define SLID_MODE_BIT   (1<<5)
+#define ACC_MODE_BIT   (1<<4)
+#define FEED_ERROR_BIT   (1<<3)
+#define SLID_ERROR_BIT   (1<<2)
+#define ACC_ERROR_BIT   (1<<1)
 void LED_Bright_Set(uint8_t value);
 bool TOF_enable(void);
 bool led_bit_status(uint16_t status);
@@ -44,6 +45,6 @@ bool ota_enable(void);
 bool hardware_error_enable(void);
 bool sense_enable(void);
 bool pairing_enable(void);
-bool food_empty_enable(void);
+bool food_low_enable(void);
 void wifi_connect_success(void);
 #endif

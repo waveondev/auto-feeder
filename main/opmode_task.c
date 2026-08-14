@@ -25,8 +25,8 @@ static esp_timer_handle_t opmode_timer = NULL;
 static esp_timer_handle_t Slid_closed_timer = NULL;
 static esp_timer_handle_t Slid_weight_timer = NULL;
 static esp_timer_handle_t food_dispense_timer = NULL;
-
-void Slid_Close_Timer_Set(bool state,uint32_t timeout);
+static esp_timer_handle_t food_feed_timer = NULL;
+void Slid_Close_Timer_Set(bool state,uint32_t timeout,int line);
 void Slid_weight_Timer_Set(bool state,uint32_t timeout);
 // 1초 뒤 타이머가 만료되면 실행될 콜백 함수
     // 2) US 상수 매크로 형태 (60초 = 60 * 1초)
@@ -39,13 +39,20 @@ static bool diff_enable = false;
 #define MOTOR_DEFAULT_TIME 20
 void FoodDispense_Timer_Set(bool state,uint32_t timeout);
 
+typedef enum{
+    SLID_IN = 0,
+    SLID_IN_ING,
+    SLID_IN_END,
+    FEED_ING,
+    FEED_END,
+    FEED_FAIL,    
+}FeederState_e;
+static FeederState_e FeederState = SLID_IN;
 
 static void opmode_timer_callback(void* arg)
 {
     //ESP_LOGI(TAG, "3초 동안 추가 입력이 없어 현재 모드로 확정합니다: %d", current_opmode);
     app_nvs_save_set();
-        water_fault_enable(WATER_MODECHANGE);
-    water_fault_disable(WATER_MODECHANGE);
     // TODO: 여기에 모드가 최종 확정되었을 때 실행할 동작(예: 화면 갱신, 실제 하드웨어 제어 등)을 넣으세요.
 }
 
@@ -67,7 +74,7 @@ void CleanMode(void)
         return;
     Clean_enable = false;
     feeder_mode_flag = false;
-    Slid_Close_Timer_Set(false, 0);
+    Slid_Close_Timer_Set(false, 0,__LINE__);
     if(Feed_Front_Enable() == false)
     {
         Feeder_CCW();         
@@ -85,7 +92,7 @@ void CleanMode(void)
         {
             vTaskDelay(10);
         }
-        Slid_Close_Timer_Set(true, 600000);
+        Slid_Close_Timer_Set(true, SEC_TO_MS(60),__LINE__);
     }
     else
         Sliding_CCW(100);
@@ -117,7 +124,8 @@ void Opmode_Set(void)
         break;
     }
     app_config->op_mode = current_opmode;
-    Slid_Close_Timer_Set(false, 0);
+    if(!Sliding_Back_Enable())
+        Slid_Close_Timer_Set(true, SEC_TO_MS(10),__LINE__);
     {
         esp_timer_stop(opmode_timer);
         esp_timer_start_once(opmode_timer, 5000000);
@@ -136,22 +144,25 @@ static void Slid_closed_timer_callback(void* arg)
     {
         if(loadcell_data_get() > 5.0f)
         {
-            Slid_Close_Timer_Set(true, 60000);
+            Slid_Close_Timer_Set(true, SEC_TO_MS(60),__LINE__);
             ESP_LOGI(TAG, "잔여물 확인됨 ");
             return;
         }        
     }
+
     if(Sliding_Front_Enable() || !Sliding_Back_Enable())
     {
         if(!VL53L0X_Detect(true))
         {
+
             Sliding_CCW(100);
             if(start_weight != 0)
-                Slid_weight_Timer_Set(true,60000);
+                Slid_weight_Timer_Set(true,SEC_TO_MS(60));
         }
         else
         {
-            Slid_Close_Timer_Set(true, 60000);
+            feeder_fault_enable(MOTOR_SLIDING_BLOCKED,true);
+            Slid_Close_Timer_Set(true, SEC_TO_MS(60),__LINE__);
             ESP_LOGI(TAG, "VL53L0X 감지됨 -> 60초 후 재시도 타이머 설정");
         }
     }    
@@ -165,13 +176,28 @@ static void Slid_weight_timer_callback(void* arg)
         {
             start_acc_motor_with_boost();
             ESP_LOGI(TAG,"start_weight = %.2f now = %.2f",start_weight, loadcell_data_get());
-            mqtt_queue_send(MESSEGE_DISPENSE);
+
+            float diff_weight = start_weight - loadcell_data_get();
+
+            if(diff_weight > 1.0f)
+            {
+                Tracker_waterintake_end((uint32_t)(diff_weight));
+                mqtt_queue_send(MESSEGE_INTAKE);
+            }
+            else
+            {   
+                if(diff_weight < -50.0f)
+                {
+                    ESP_LOGI(TAG, "잔여물 증가 ");
+                    feeder_fault_enable(WEIGHT_ABNORMAL_INCREASE,true);
+                }
+            }
             start_weight = 0.0f;
         }
         else
         {
             if (!esp_timer_is_active(Slid_weight_timer)) {
-                Slid_weight_Timer_Set(true, MOTOR_DEFAULT_TIME*1000);
+                Slid_weight_Timer_Set(true, SEC_TO_MS(MOTOR_DEFAULT_TIME));
             } 
         }
     }
@@ -197,16 +223,21 @@ static void food_timer_callback(void* arg)
     }
 }
 
-void Slid_Close_Timer_Set(bool state,uint32_t timeout)
+static void food_feed_callback(void* arg)
+{
+    FeederState = FEED_FAIL;
+}
+
+void Slid_Close_Timer_Set(bool state,uint32_t timeout,int line)
 {
     if (esp_timer_is_active(Slid_closed_timer)) {
         esp_timer_stop(Slid_closed_timer);
     } 
 
-    if(state & !Sliding_Back_Enable())
+    if(state)
     {
         esp_timer_start_once(Slid_closed_timer, SEC_TO_MS(timeout));
-        ESP_LOGI(TAG, "Slid close set"); 
+        ESP_LOGI(TAG, "Slid close set %d", line); 
     }
 }
 
@@ -243,31 +274,38 @@ void FoodDispense_Timer_Set(bool state,uint32_t timeout)
     #endif
 }
 
-typedef enum{
-    SLID_IN = 0,
-    SLID_IN_ING,
-    SLID_IN_END,
-    FEED_ING,
-    FEED_END,
-    FEED_FAIL,    
-}FeederState_e;
-static FeederState_e FeederState = SLID_IN;
+void FoodFeed_Timer_Set(bool state,uint32_t timeout)
+{
+    #if 1
+    if (esp_timer_is_active(food_feed_timer)) {
+        esp_timer_stop(food_feed_timer);
+    } 
+    if(state)
+    {
+        esp_timer_start_once(food_feed_timer, SEC_TO_MS(timeout));
+        ESP_LOGI(TAG, "food set"); 
+    }
+    else
+        ESP_LOGI(TAG, "food reset"); 
+    #endif
+}
+
+
 bool feeder_mode_init(void)
 {
     if(VL53L0X_Detect(false) && !Sliding_Back_Enable())
     {
         return false;
     }
-    if(food_empty_enable() || hardware_error_enable())
+    if(hardware_error_enable())
         return false;
     if(feeder_mode_flag == false)
     {
-        Slid_Close_Timer_Set(false, 0);
+        Slid_Close_Timer_Set(false, 0,__LINE__);
+        Slid_weight_Timer_Set(false,0);
         FeederState = SLID_IN;
         feeder_mode_flag = true;
-        if (esp_timer_is_active(Slid_closed_timer)) {
-            esp_timer_stop(Slid_closed_timer);
-        } 
+
         return true;
     }
     return false;
@@ -278,9 +316,10 @@ void Open_Slid(void)
     bool back_enable = false;
     if(Sliding_Front_Enable())
         return;
-    if (esp_timer_is_active(Slid_weight_timer)) {
-        esp_timer_stop(Slid_weight_timer);
-    } 
+
+    Slid_Close_Timer_Set(true, SEC_TO_MS(60),__LINE__);
+    Slid_weight_Timer_Set(false,0);
+
     while(Sliding_Back_Enable() == false)
     {
         Sliding_CCW(100);
@@ -301,6 +340,7 @@ void Open_Slid(void)
             vTaskDelay(1000);
         }
     }
+
 }
 
 // SMART 모드 내부 상태 머신 정의
@@ -382,7 +422,7 @@ static void Opmode_task(void *pvParameter)
                 {
                     case SLID_IN :
                         Food_Max = 0;
-                        Food_Empty_count = 0;
+
                         if(!Sliding_Back_Enable())
                             Sliding_CCW(100);
                         FeederState = SLID_IN_ING;
@@ -400,10 +440,17 @@ static void Opmode_task(void *pvParameter)
                             feed_start = 0.0f;
                             
                         Feeder_CW();
-                        if(food_empty_enable())
-                            FeederState = FEED_FAIL;
+
+                        if(Food_Detected_State())
+                        {
+                            feeder_fault_enable(FOOD_LOW,true);
+                            led_bit_enable(FOOD_LOW_BIT);
+                        }
                         else
-                            FeederState = FEED_ING;
+                            led_bit_disable(FOOD_LOW_BIT);             
+
+                        FoodFeed_Timer_Set(true,120000);
+                        FeederState = FEED_ING;
                     break;
                     case FEED_ING :                        
                             if(Food_Door_Detected_State())
@@ -411,9 +458,13 @@ static void Opmode_task(void *pvParameter)
                                 Food_Max++;
                             }
                             else
+                            {
                                 Food_Max = 0;
+                            }
+
                             if(Food_Max != 0 && (Food_Max % 10) == 0)
                             {
+                                FoodFeed_Timer_Set(true,120000);
                                 Feeder_coast();
                                 for(int i=0;i<5;i++)
                                 {
@@ -428,22 +479,12 @@ static void Opmode_task(void *pvParameter)
                                     {
                                         vTaskDelay(10);
                                     }
-                                    
                                 }
                                 vTaskDelay(1000);
                                 Feeder_CW();
                                 ESP_LOGI(TAG,"Food_Max = %d",Food_Max);
                             }
-                            feed_diff = loadcell_data_get() - feed_start;
-                            if(food_empty_enable())
-                            {
-                                Food_Empty_count++;
-                                if(Food_Empty_count >= 100)
-                                    FeederState = FEED_END;
-                            }
-                            else{
-                                Food_Empty_count = 0;
-                            }                                    
+                            feed_diff = loadcell_data_get() - feed_start;                   
 
                             float gram = (float)app_config->dispense_amount_g;
                             if(feed_diff >= gram-10)
@@ -453,6 +494,7 @@ static void Opmode_task(void *pvParameter)
                                 feed_diff = loadcell_data_get() - feed_start;
                                 if(feed_diff >= gram)
                                 {
+                                    FoodFeed_Timer_Set(false,0);
                                     ESP_LOGI(TAG,"Start: %.2f | Current: %.2f | Diff: %.2f\r\n", feed_start, loadcell_data_get(), feed_diff);
                                     FeederState = FEED_END; // 조건 만족 시 FEED_END로 변경
                                     break;
@@ -466,7 +508,8 @@ static void Opmode_task(void *pvParameter)
 
                     break;
                     case FEED_END :
-                        mqtt_queue_send(MESSEGE_INTAKE);
+  
+                        mqtt_queue_send(MESSEGE_DISPENSE);
                         Feeder_CCW();         
                         while(Feed_Front_Enable() == false)
                         {
@@ -477,6 +520,8 @@ static void Opmode_task(void *pvParameter)
                             Open_Slid();
                     break;
                     case FEED_FAIL :
+                        led_bit_enable(FOOD_EMPTY_BIT);
+                        feeder_fault_enable(FOOD_EMPTY,true);
                         Feeder_coast();
                         feeder_mode_flag = false;
                     break;
@@ -487,23 +532,12 @@ static void Opmode_task(void *pvParameter)
                 switch(current_opmode)
                 {
                     case FEED_MODE_SCHEDULED_PORTION:
-                        //Open_Slid();
-                        {
-                            if (!esp_timer_is_active(Slid_closed_timer)) {
-                                Slid_Close_Timer_Set(true, MOTOR_DEFAULT_TIME*1000);
-                            } 
-                        }
+
                     break;
                     case FEED_MODE_MANUAL_PORTION:
                         if(VL53L0X_Detect(true))
                         {
                             Open_Slid();
-                        }
-                        else
-                        {
-                            if (!esp_timer_is_active(Slid_closed_timer)) {
-                                Slid_Close_Timer_Set(true, MOTOR_DEFAULT_TIME*1000);
-                            } 
                         }
                     break;
                     case FEED_MODE_FREE_FEEDING:
@@ -517,12 +551,6 @@ static void Opmode_task(void *pvParameter)
                             if(VL53L0X_Detect(true))
                             {
                                 Open_Slid();
-                            }
-                            else
-                            {
-                                if (!esp_timer_is_active(Slid_closed_timer)) {
-                                    Slid_Close_Timer_Set(true, MOTOR_DEFAULT_TIME*1000);
-                                } 
                             }
                         }
 
@@ -571,6 +599,12 @@ void opmode_task_init(void)
     };
     esp_timer_create(&food_dispense_args, &food_dispense_timer);
 
+    const esp_timer_create_args_t food_feed_args = {
+        .callback = &food_feed_callback,
+        .name = "food_feed_timer"
+    };
+    esp_timer_create(&food_feed_args, &food_feed_timer);
+    
     #if 1
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(

@@ -60,11 +60,15 @@ static void acc_motor_boost_task(void *pvParameters)
 
                 for (int i = 0; i < 600; i++) {
                     vTaskDelay(pdMS_TO_TICKS(100));
-
-
+                            
+                    if(Feed_Front_Enable() == false)
+                    {
+                        Accum_Set(false);
+                        break;
+                    }
                     int adc_val = GetAcc_ADC(); 
 
-                    if (adc_val > 300) {
+                    if (adc_val > 370) {
                         ESP_LOGI(TAG, "진공 도달 성공! (ADC: %d)", adc_val);
                         vacuum_success = true;
                         break; 
@@ -77,11 +81,13 @@ static void acc_motor_boost_task(void *pvParameters)
                 }
             }
 
-            
             if (!vacuum_success) {
-                Accum_Set(false);
+                led_bit_enable(ACC_ERROR_BIT);
+                feeder_fault_enable(VACUUM_FAIL,true);
+                
                 ESP_LOGE(TAG, "최종 진공 형성 실패 (3회 타임아웃)");
             }
+            Accum_Set(false);
             led_bit_disable(ACC_MODE_BIT);
             is_motor_running = false;
         }

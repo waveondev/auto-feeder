@@ -76,6 +76,7 @@ float loadcell_data_get(void)
 void HX711_Sensing(void)
 {
     esp_err_t r;
+    static int error_count = 0;
     DBG_Resister_t *DBG_Resister = Debug_Get();
     app_config_t* app_config = get_app_config();
     int32_t hx711_data = 0;
@@ -91,9 +92,16 @@ void HX711_Sensing(void)
 
     if (r != ESP_OK)
     {
+        error_count++;
+        if(error_count == 10)
+        {
+            feeder_fault_enable(WEIGHT_SENSOR_ERR,true);
+        }
         ESP_LOGE(TAG, "Could not read data: %d (%s)", r, esp_err_to_name(r));
         return;
     }
+    
+    error_count = 0;
     // 1. 순수 차이값(음수 포함)을 정수로 먼저 계산
     int32_t net_raw = hx711_data - app_config->case_raw_data;
 
@@ -132,9 +140,16 @@ static void HX711_task(void *pvParameter)
 
         HX711_Sensing();
         if(loadcell_data_get() < -50.0f)
+        {
+            feeder_fault_enable(WEIGHT_ABNORMAL_DECREASE,false);
             led_bit_enable(HARDWARE_ERR_BIT);
+        }
         else
+        {
             led_bit_disable(HARDWARE_ERR_BIT);
+            feeder_fault_disable(WEIGHT_ABNORMAL_DECREASE,false);
+        }
+
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     

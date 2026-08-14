@@ -12,7 +12,11 @@
 #include "esp_random.h"
 #include "aws_iot_task.h"
 #include "app_button.h"
-#define OTA_URL "https://evtago.s3.ap-northeast-2.amazonaws.com/water-dispenser.bin"
+#define OTA_URL "https://evtago.s3.ap-northeast-2.amazonaws.com/auto-feeder-v3.bin"
+
+#include "app_HX711.h"
+#include "app_slid_motor.h"
+#include "app_acc_motor.h"
 // 분할 전송 시 사용할 MTU 사이즈를 저장할 전역/정적 변수 [앱에서 받을 수 있는 ble의 사이즈를 저장]
 
 uint8_t* get_ble_session_key(void);
@@ -355,6 +359,26 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
     if(strcmp(buf, "OTA") == 0)
     {
         ota_main(OTA_URL);
+        return;
+    }
+    if(strcmp(buf, "CAL") == 0)
+    {
+        HX711_cal_init(1);
+        return;
+    }
+    if(strcmp(buf, "SLIDIN") == 0)
+    {
+        Sliding_CW(100);
+        return;
+    }
+    if(strcmp(buf, "SLIDOUT") == 0)
+    {
+        Sliding_CCW(100);
+        return;
+    }
+    if(strcmp(buf, "VACUUM") == 0)
+    {
+        start_acc_motor_with_boost();
         return;
     }
 

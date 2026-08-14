@@ -67,9 +67,9 @@ bool pairing_enable(void)
 {
     return (led_status_resister & PAIRING_BIT);
 }
-bool food_empty_enable(void)
+bool food_low_enable(void)
 {
-    return (led_status_resister & FOOD_EMPTY_BIT);
+    return (led_status_resister & FOOD_LOW_BIT);
 }
 bool food_discharge_enable(void)
 {
@@ -81,14 +81,14 @@ bool lock_mode_enable(void)
 }
 bool motor_mode_enable(void)
 {
-    uint16_t motor_bit = (7 << 5); 
+    uint16_t motor_bit = (7 << 4); 
     
     // 0이 아니면 하나라도 1이 켜져 있다는 의미
     return ((led_status_resister & motor_bit) != 0); 
 }
 bool motor_error_enable(void)
 {
-    uint16_t motor_bit = (7 << 2); 
+    uint16_t motor_bit = (7 << 1); 
     
     // 0이 아니면 하나라도 1이 켜져 있다는 의미
     return ((led_status_resister & motor_bit) != 0); 
@@ -363,11 +363,7 @@ static void LED_task(void *pvParameter)
                     }
                     else 
                     #endif
-                    if(food_empty_enable())
-                    {
-                        set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
-                    }
-                    else if(motor_error_enable())
+                    if(motor_error_enable())
                     {
                         set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
                     }
@@ -414,8 +410,8 @@ static void LED_task(void *pvParameter)
                         {
                             switch(last_op_mode) {
                                 case FEED_MODE_SCHEDULED_PORTION: set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
-                                case FEED_MODE_MANUAL_PORTION:  set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
-                                case FEED_MODE_FREE_FEEDING:  set_rgb_len_no_Breathing(0,0 , LED_brightness_value, 0); break;
+                                case FEED_MODE_MANUAL_PORTION:  set_rgb_len_no_Breathing(0, 0,LED_brightness_value, 0 ); break;
+                                case FEED_MODE_FREE_FEEDING:  set_rgb_len_no_Breathing(0,LED_brightness_value ,0, 0); break;
                                 default: set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
                             }
                         }

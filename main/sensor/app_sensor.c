@@ -94,10 +94,7 @@ void Sensor_task(void *pvParameter)
         vTaskDelay(25 / portTICK_PERIOD_MS);
         VL53L0X_Sensing();
         #if 1
-        if(Food_Detected_State())
-            led_bit_enable(FOOD_EMPTY_BIT);
-        else
-            led_bit_disable(FOOD_EMPTY_BIT);             
+
         #endif
         if(DBG_Resister->sens)
         {
@@ -117,7 +114,7 @@ bool sensor_init(void)
 {
 
     gpio_config_t io_conf = {                   
-        .pin_bit_mask = (1ULL << IR_ONOFF0) | (1ULL << IR_ONOFF1)| (1ULL << PIN_TOF0_INT) |(1ULL << 46),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .pin_bit_mask = (1ULL << IR_ONOFF0) | (1ULL << IR_ONOFF1)| (1ULL << PIN_TOF0_INT),             // 설정할 GPIO 핀 15, 16, 2 지정
         .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
         .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
         .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
@@ -128,7 +125,6 @@ bool sensor_init(void)
     gpio_set_level(IR_ONOFF0, 0);   
     gpio_set_level(IR_ONOFF1, 0);   
     gpio_set_level(PIN_TOF0_INT, 1);   
-    gpio_set_level(46, 1);   
     HX711_task_init();
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
     if (xTaskCreatePinnedToCore(

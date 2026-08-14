@@ -53,6 +53,7 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
 
+
 void Lock_Set(bool state)
 {
     button_lock = state;
@@ -140,7 +141,7 @@ static void Button_task(void* arg)
     for(;;) {
         // 1. 인터럽트(눌림 또는 뗌) 발생 대기
         if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            
+
             // 2. 물리적 바운싱(지지직거림)이 진정될 때까지 딱 20ms만 멈춰서 기다림
             vTaskDelay(pdMS_TO_TICKS(20));
             
@@ -189,10 +190,10 @@ static void Button_task(void* arg)
 static void double_click_timer_callback(TimerHandle_t xTimer)
 {
     if (click_count == 1) {
-        ESP_LOGI(TAG, "👉 [EVENT] 단일 클릭 (Short)");
+        ESP_LOGI(TAG, "[EVENT] 단일 클릭 (Short)");
         bf_SingleClickAction();
     } else if (click_count >= 2) {
-        ESP_LOGI(TAG, "👉 [EVENT] 더블 클릭!");
+        ESP_LOGI(TAG, "[EVENT] 더블 클릭!");
         bf_DoubleClickAction();
     }
     click_count = 0; // 카운트 초기화
@@ -211,7 +212,6 @@ void button_task_init(void)
     
     gpio_install_isr_service(0);
     gpio_isr_handler_add(PIN_PKEY_STAT, gpio_isr_handler, (void*) PIN_PKEY_STAT);
-
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     
     double_click_timer = xTimerCreate("double_click_timer", pdMS_TO_TICKS(DOUBLE_CLICK_DELAY_MS), 

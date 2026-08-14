@@ -230,35 +230,85 @@ bool TOF_VL53L0X_init(void)
 }
 #else
 
+static void IRAM_ATTR gpio_bat_isr_handler(void* arg)
+{
+    uint32_t gpio_num = (uint32_t) arg;
+    
+    if(gpio_get_level(2) == 0)
+        gpio_set_level(45, 0);
+    else  
+        gpio_set_level(45, 1);  
+    //ESP_LOGI(TAG, "iiiio2 = %d ",gpio_get_level(2));
+}
+
+
+
+void Test_init(void)
+{
+    gpio_set_level(45, 1); 
+    gpio_config_t io_conf = {                   
+        .pin_bit_mask =(1ULL << 45),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_OUTPUT_OD,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+    gpio_config(&io_conf);
+
+
+    io_conf.pin_bit_mask = (1ULL << 2);
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;
+
+    gpio_config(&io_conf);
+
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(2, gpio_bat_isr_handler, (void*) 2);
+
+}
+
+
+
+
 bool VL53L0X_Detect(bool all_state)
 {
     if(all_state)
     {
         if(GetTracker_Id_active())
-            return true;
+        {
+            // ESP_LOGI(TAG,"ADC = traker");
+                         return true;
+        }
+
     }
-    if (GetIR_ADC() > 1550) {
+    if (GetIR_ADC() > 3) {
+       // ESP_LOGI(TAG,"ADC = %d",GetIR_ADC());
         return true;
     } else {
         return false;
     }
 }
 
+
 void VL53L0X_Sensing(void)
 {
     gpio_set_level(PIN_TOF0_INT, 1);   
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(2));
     ADC_Sensing();
-
+    vTaskDelay(pdMS_TO_TICKS(1));
     gpio_set_level(PIN_TOF0_INT, 0); 
-   // vTaskDelay(500);
+   
+
+
+    //ESP_LOGI(TAG, "io2 = %d ",gpio_get_level(2));
+    //vTaskDelay(500);
 }
 
 bool TOF_VL53L0X_init(void)
 {    
-
+  
     gpio_config_t io_conf = {                   
-        .pin_bit_mask =(1ULL << PIN_TOF0_INT) |(1ULL << 46),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .pin_bit_mask =(1ULL << PIN_TOF0_INT),             // 설정할 GPIO 핀 15, 16, 2 지정
         .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
         .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
         .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
@@ -267,7 +317,8 @@ bool TOF_VL53L0X_init(void)
     gpio_config(&io_conf);
     gpio_set_level(PIN_TOF0_INT, 0); 
 
-    gpio_set_level(46, 1);   
+    //Test_init();
+    
     return true;
 }
 #endif

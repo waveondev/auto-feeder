@@ -219,8 +219,10 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				gpio_set_level(PIN_TOF0_INT, atoi(ag[2])?1:0);
 			}					
-
-	
+			else if (!strncmp(ag[1], "bat", 3))
+			{
+				gpio_set_level(45, atoi(ag[2])?1:0);
+			}	
     
 
 			  

@@ -122,6 +122,11 @@ void ADC_Sensing(void)
     static int timeout_count = 0; // 연속 타임아웃 카운트
     // DMA 버퍼 읽기
     // 10ms 동안 수집된 DMA 데이터 읽기
+
+    adc_continuous_start(adc_handle);
+
+    // 2. 아날로그 회로 안정화 및 샘플 수집을 위해 잠깐 대기 (예: 5ms)
+    vTaskDelay(pdMS_TO_TICKS(5));    
     ret = adc_continuous_read(adc_handle,
                             result_buf,
                             sizeof(result_buf),
@@ -238,14 +243,14 @@ void ADC_Sensing(void)
                 break;
         } 
     }
-
+adc_continuous_stop(adc_handle);
     if (ret == ESP_ERR_TIMEOUT) {
         timeout_count++;
         // 연속으로 10번 이상 TIMEOUT이 발생하면 ADC 드라이버가 멈춘 것으로 판단하고 재시작
         if (timeout_count >= 10) {
             ESP_LOGW("ADC", "ADC DMA 멈춤 감지! 재시작 수행...");
-            adc_continuous_stop(adc_handle);
-            adc_continuous_start(adc_handle);
+            //adc_continuous_stop(adc_handle);
+            //adc_continuous_start(adc_handle);
         }
         if (timeout_count >= 50) {
             led_bit_enable(SENSE_ERR_BIT);
@@ -268,7 +273,7 @@ void adc_init(void) {
 
     // 2. 3개 채널(GPIO 1, 6, 7) 패턴 등록
     adc_continuous_config_t dig_cfg = {
-        .sample_freq_hz = 20000, // 20kHz 샘플링
+        .sample_freq_hz = 2000, // 20kHz 샘플링
         .conv_mode = ADC_CONV_SINGLE_UNIT_1, // ADC1 단독 사용
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };

@@ -110,13 +110,16 @@ static void feedmotor_boost_task(void *pvParameters)
                 Motor_enable = false;
                 feeder_motor_coast();
             }  
-            if(GetFeed_ADC() > 500)
+            if(GetFeed_ADC() > 450)
             {
                 feed_stuck_count++;
                 feeder_motor_coast();      
                 if(feed_stuck_count > app_config->motor_stuck_retry_count)
                 {
+                    feeder_fault_enable(MOTOR_SCREW_JAMMED,true);
+
                     led_bit_disable(FEED_MODE_BIT);
+                    led_bit_enable(FEED_ERROR_BIT);
                     Motor_enable = false;           
                 }
                 else

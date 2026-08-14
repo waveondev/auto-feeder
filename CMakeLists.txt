@@ -7,7 +7,7 @@ if("${IDF_TARGET}" STREQUAL "linux")
 endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(auto_feeder)
+project(auto-feeder)
 
 # Create a SPIFFS image from the contents of the 'spiffs_image' directory
 # that fits the partition named 'storage'. FLASH_IN_PROJECT indicates that

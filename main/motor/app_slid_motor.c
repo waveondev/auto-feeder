@@ -219,6 +219,8 @@ static void slidmotor_boost_task(void *pvParameters)
         {
             if(slid_stuck_count > app_config->motor_stuck_retry_count)
             {
+                feeder_fault_enable(MOTOR_SLIDING_ERR,true);
+                led_bit_enable(SLID_ERROR_BIT); 
                 Sliding_coast();
                 Motor_enable = false;
             }

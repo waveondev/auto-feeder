@@ -62,6 +62,9 @@ typedef enum {
 #define IR_ONOFF1 14
 #define IR_OUT1  5
 
+#define VBUS_ADC  2
+
+
 void gpio_init(gpio_num_t num, gpio_mode_t mode, gpio_int_type_t int_type,gpio_isr_t func);
 void gpio_toggle(gpio_num_t pin);
 void gpio_setpin(gpio_num_t pin);

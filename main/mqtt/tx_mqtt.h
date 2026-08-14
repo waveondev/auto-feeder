@@ -34,24 +34,23 @@ typedef struct
     uint32_t data_len;
 }tracker_mqtt_packet_t;
 
-#define WATER_LOW_FAULT                 (1<<0)
-#define WATER_EMPTY_FAULT               (1<<1)
-#define WATER_BOWL_DETACHED_FAULT       (1<<2)
-#define WATER_LOADCELL_ERR              (1<<3)
-#define WATER_SPLASHING_FAULT           (1<<4)
-#define WATER_PUMP_ERR                  (1<<5)
-#define WATER_TOF_SENSOR_ERR            (1<<6)
-#define WATER_BLE_SCAN_ERR              (1<<7)
-#define WATER_UV_FAIL                   (1<<8)
-#define WATER_FILTER_WATER_EX           (1<<9)
-#define WATER_FILTER_DEBRIS_EX          (1<<10)
-#define WATER_MODECHANGE                (1<<11)
+#define WEIGHT_ABNORMAL_INCREASE                (1<<0)
+#define WEIGHT_ABNORMAL_DECREASE                (1<<1)
+#define WEIGHT_SENSOR_ERR                       (1<<2)
+#define MOTOR_SCREW_ERR                         (1<<3)
+#define MOTOR_SCREW_JAMMED                      (1<<4)
+#define MOTOR_SLIDING_ERR                       (1<<5)
+#define MOTOR_SLIDING_BLOCKED                   (1<<6)
+#define MOTOR_VACUUM_ERR                        (1<<7)
+#define VACUUM_FAIL                             (1<<8)
+#define FOOD_LOW                                (1<<9)
+#define FOOD_EMPTY                              (1<<10)
 
 
 void Send_cJSON_Messege(messege_tx_mqtt_cmd_e cmd);
 
 void Send_cJSON_Messege_for_tracker(tracker_mqtt_packet_t* tracker_mqtt_packet);
-void water_fault_enable(uint16_t status);
-void water_fault_disable(uint16_t status);
+void feeder_fault_enable(uint16_t status, bool count);
+void feeder_fault_disable(uint16_t status,bool count);
 #endif
 

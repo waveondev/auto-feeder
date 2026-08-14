@@ -182,7 +182,7 @@ static void print_sha256(const uint8_t *image_hash, const char *label)
     }
     ESP_LOGI(TAG, "%s %s", label, hash_print);
 }
-
+#include "app_sensor.h"
 static void get_sha256_of_partitions(void)
 {
     uint8_t sha_256[HASH_LEN] = { 0 };
@@ -215,6 +215,8 @@ void ota_main(const char* URL)
         ESP_LOGE(TAG, "Wi-Fi는 연결되었으나, 아직 IP 주소를 할당받지 못했습니다!");
         return;
     }
+    //while(Sliding_Back_Enable() == false)
+       // vTaskDelay(1000);
     esp_log_level_set("esp_https_ota", ESP_LOG_DEBUG);
     static char URL_Buffer[200];
     memset(URL_Buffer, 0, sizeof(URL_Buffer));

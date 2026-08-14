@@ -8,37 +8,40 @@
 #include "app_config_flash.h"
 #include "device_config.h"
 #include "clock.h"
-
+#include "app_sensor.h"
 static const char *TAG = __FILE__;
 
 Motion_Packet_t motion_res;
 Motion_Packet_t health_res;
-static uint16_t water_fault_code = 0;
-static uint16_t water_fault_code_send = 0;
-static uint16_t water_fault_code_buf = 0;
+static uint16_t feeder_fault_code = 0;
+static uint16_t feeder_fault_code_send = 0;
+static uint16_t feeder_fault_code_buf = 0;
 #define WATER_MAJOR 1
 #define WATER_MINOR 1
 #define WATER_PATCH 1
-void water_fault_enable(uint16_t status)
+void feeder_fault_enable(uint16_t status, bool count)
 {
-    water_fault_code |= status;
-    if(water_fault_code != water_fault_code_buf)
+    feeder_fault_code |= status;
+    if(feeder_fault_code != feeder_fault_code_buf)
     {
-        water_fault_code_send = status;
-        water_fault_code_buf = water_fault_code;
-        ESP_LOGI(TAG,"MESSEGE_DIAGNOSTICS = %04x", water_fault_code_send);
+        feeder_fault_code_buf = feeder_fault_code;
+        feeder_fault_code_send = status;
+        ESP_LOGI(TAG,"MESSEGE_DIAGNOSTICS = %04x", status);
         
         mqtt_queue_send(MESSEGE_DIAGNOSTICS);
     }
+    if(count)
+        feeder_fault_disable(status, count);            
 }
 
-void water_fault_disable(uint16_t status)
+void feeder_fault_disable(uint16_t status,bool count)
 {
-    water_fault_code &= ~(status);
-    if(water_fault_code != water_fault_code_buf)
+    feeder_fault_code &= ~(status);
+    if(feeder_fault_code != feeder_fault_code_buf)
     {
-        water_fault_code_buf = water_fault_code;
-       // mqtt_queue_send(MESSEGE_DIAGNOSTICS);
+        feeder_fault_code_buf = feeder_fault_code;
+        if(!count)
+            mqtt_queue_send(MESSEGE_DIAGNOSTICS);
     }
 }
 
@@ -141,6 +144,7 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
     };
     cJSON *data_obj = cJSON_CreateObject();
     uint8_t mac_byte[6];
+    char sub_string[20];
     char dynamicMacStr[13]; // 12자리 MAC 문자열 + 널 종료 문자(\0)
     cJSON *subsystems;
     uint32_t uptime = Clock_GetTimeMs() / 1000;
@@ -241,15 +245,65 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
             cJSON_AddNumberToObject(data_obj, "rssi_dbm", rssi);
 
             subsystems = cJSON_CreateObject();
-            cJSON_AddStringToObject(subsystems, "weight", "ok");
+            if(feeder_fault_code_send & WEIGHT_SENSOR_ERR)
+            {
+                sprintf(sub_string,"weight");
+                cJSON_AddStringToObject(subsystems, "weight", "fault");
+            }
+            else if(feeder_fault_code_send & WEIGHT_ABNORMAL_INCREASE)
+            {
+                sprintf(sub_string,"weight");
+                cJSON_AddStringToObject(subsystems, "weight", "degraded");
+            }
+            else
+                cJSON_AddStringToObject(subsystems, "weight", "ok");
 
-            cJSON_AddStringToObject(subsystems, "motor.screw", "ok"); // 펌프 에러 발생
-            cJSON_AddStringToObject(subsystems, "motor.sliding", "ok"); // 펌프 에러 발생
-            cJSON_AddStringToObject(subsystems, "motor.vacuum", "ok"); // 펌프 에러 발생
+            if(feeder_fault_code_send & MOTOR_SCREW_ERR)
+            {
+                cJSON_AddStringToObject(subsystems, "motor.screw", "fault");
+                sprintf(sub_string,"motor.screw");
+            }
+            else
+                cJSON_AddStringToObject(subsystems, "motor.screw", "ok"); // 펌프 에러 발생
 
-            cJSON_AddStringToObject(subsystems, "vacuum", "ok");
+            if(feeder_fault_code_send & MOTOR_SLIDING_ERR)
+            {
+                cJSON_AddStringToObject(subsystems, "motor.sliding", "fault");
+                sprintf(sub_string,"motor.sliding");
+            }
+            else
+                cJSON_AddStringToObject(subsystems, "motor.sliding", "ok"); // 펌프 에러 발생
+
+            if(feeder_fault_code_send & MOTOR_VACUUM_ERR)
+            {
+                cJSON_AddStringToObject(subsystems, "motor.vacuum", "fault");
+                sprintf(sub_string,"motor.vacuum");
+            }
+            else
+            {
+                cJSON_AddStringToObject(subsystems, "motor.vacuum", "ok"); // 펌프 에러 발생
+                cJSON_AddStringToObject(subsystems, "vacuum", "ok");
+            }
+
             cJSON_AddStringToObject(subsystems, "door", "ok");
-            cJSON_AddStringToObject(subsystems, "feed_supply", "ok");
+
+
+            
+            if(feeder_fault_code_send & FOOD_LOW) 
+            {
+                cJSON_AddStringToObject(subsystems, "feed_supply", "FOOD_LOW");
+                sprintf(sub_string,"feed_supply");
+            }
+            else if(feeder_fault_code_send & FOOD_EMPTY)
+            {
+                cJSON_AddStringToObject(subsystems, "feed_supply", "FOOD_EMPTY");
+                sprintf(sub_string,"feed_supply");
+            }
+            else
+            {
+                cJSON_AddStringToObject(subsystems, "feed_supply", "ok");
+            }
+
             cJSON_AddStringToObject(subsystems, "power",         "ok");
 
             cJSON_AddItemToObject(data_obj, "subsystems", subsystems);
@@ -268,12 +322,10 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
                 cJSON_AddItemToArray(results, obj);
             }
 
-            cJSON_AddStringToObject(data_obj, "affected_subsystem", "door");
+            cJSON_AddStringToObject(data_obj, "affected_subsystem", sub_string);
 
             // context 객체
             cJSON *context = cJSON_CreateObject();
-            cJSON_AddNumberToObject(context, "pump_current_mA", 0); // 펌프 전류 측정값 예시
-            cJSON_AddNumberToObject(context, "retry_count", 3);
             cJSON_AddItemToObject(data_obj, "context", context);
         break;
         case MESSEGE_HEALTH:
@@ -281,29 +333,60 @@ static cJSON* Get_cJSON_Data(messege_tx_mqtt_cmd_e cmd)
             cJSON_AddNumberToObject(data_obj, "uptime_sec", uptime);
             cJSON_AddNumberToObject(data_obj, "reset_reason", 0);
             cJSON_AddNumberToObject(data_obj, "rssi_dbm", rssi);
+           subsystems = cJSON_CreateObject();
+            if(feeder_fault_code_send & WEIGHT_SENSOR_ERR)
+                cJSON_AddStringToObject(subsystems, "weight", "fault");
+            else if(feeder_fault_code_send & WEIGHT_ABNORMAL_INCREASE)
+                cJSON_AddStringToObject(subsystems, "weight", "degraded");
+            else
+                cJSON_AddStringToObject(subsystems, "weight", "ok");
 
-            subsystems = cJSON_CreateObject();
-            cJSON_AddStringToObject(subsystems, "weight", "ok");
+            if(feeder_fault_code_send & MOTOR_SCREW_ERR)
+                cJSON_AddStringToObject(subsystems, "motor.screw", "fault");
+            else
+                cJSON_AddStringToObject(subsystems, "motor.screw", "ok"); // 펌프 에러 발생
 
-            cJSON_AddStringToObject(subsystems, "motor.screw", "ok"); 
-            cJSON_AddStringToObject(subsystems, "motor.sliding", "ok"); 
-            cJSON_AddStringToObject(subsystems, "motor.vacuum", "ok"); 
+            if(feeder_fault_code_send & MOTOR_SLIDING_ERR) 
+                cJSON_AddStringToObject(subsystems, "motor.sliding", "fault");
+            else
+                cJSON_AddStringToObject(subsystems, "motor.sliding", "ok"); // 펌프 에러 발생
 
-            cJSON_AddStringToObject(subsystems, "vacuum", "ok");
+            if(feeder_fault_code_send & MOTOR_VACUUM_ERR) 
+            {
+                cJSON_AddStringToObject(subsystems, "motor.vacuum", "fault"); // 펌프 에러 발생
+                cJSON_AddStringToObject(subsystems, "vacuum", "fault");
+            }
+            else
+            {
+                cJSON_AddStringToObject(subsystems, "motor.vacuum", "ok"); // 펌프 에러 발생
+                cJSON_AddStringToObject(subsystems, "vacuum", "ok");
+            }
+
             cJSON_AddStringToObject(subsystems, "door", "ok");
-            cJSON_AddStringToObject(subsystems, "feed_supply", "ok");
+
+            if(feeder_fault_code_send & FOOD_LOW) 
+            {
+                cJSON_AddStringToObject(subsystems, "feed_supply", "FOOD_LOW");
+            }
+            else if(feeder_fault_code_send & FOOD_EMPTY)
+            {
+                cJSON_AddStringToObject(subsystems, "feed_supply", "FOOD_EMPTY");
+            }
+            else
+            {
+                cJSON_AddStringToObject(subsystems, "feed_supply", "ok");
+            }
+
             cJSON_AddStringToObject(subsystems, "power",         "ok");
 
             cJSON_AddItemToObject(data_obj, "subsystems", subsystems);
 
             // 🔧 필수 추가: W-100 헬스 측정 데이터 항목 (§2.6 참조)
-            cJSON_AddStringToObject(data_obj, "power_source", "ADAPTER");
-            cJSON_AddNumberToObject(data_obj, "food_level", 0);                
-            cJSON_AddNumberToObject(data_obj, "vacuum", 0);                
-            cJSON_AddNumberToObject(data_obj, "door_status", 0);     
-            cJSON_AddNumberToObject(data_obj, "battery_voltage", 100.0);    
-            cJSON_AddNumberToObject(data_obj, "adapter_voltage", 100.0);                  
-            cJSON_AddNumberToObject(data_obj, "free_heap", 0);               
+            cJSON_AddStringToObject(data_obj, "power_source", "ADAPTER");              
+            if(Sliding_Back_Enable())
+                cJSON_AddNumberToObject(data_obj, "door_status", 0);     
+            else
+                cJSON_AddNumberToObject(data_obj, "door_status", 1);                             
         break;
         case AWS_MESSEGE_AWS_JOBS_GET:
             // 빈 cJSON 객체(data_obj) 그대로 반환
