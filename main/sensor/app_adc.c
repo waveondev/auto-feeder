@@ -39,7 +39,7 @@ static int ch0_mv_max = 100;
 static int ch5_mv_max = 100;
 static int ch6_mv_max = 100;  
 
-#define IR_SENS_COUNT 10
+#define IR_SENS_COUNT 5
 static int ch7_mv_max[IR_SENS_COUNT] = {0};  
 static int ch7_count = 0;
 
@@ -115,7 +115,7 @@ mv_ch0 > 800
 
 void ADC_Sensing(void)
 {
-    uint8_t result_buf[36] = {0};
+    uint8_t result_buf[48] = {0};
     uint32_t ret_num = 0;
     uint32_t number_sum = 0;
     esp_err_t ret =ESP_OK;
@@ -267,7 +267,7 @@ void adc_init(void) {
 // 1. DMA 핸들 생성
     adc_continuous_handle_cfg_t handle_cfg = {
         .max_store_buf_size = 256,
-        .conv_frame_size = 36,
+        .conv_frame_size = 48,
     };
     ESP_ERROR_CHECK(adc_continuous_new_handle(&handle_cfg, &adc_handle));
 

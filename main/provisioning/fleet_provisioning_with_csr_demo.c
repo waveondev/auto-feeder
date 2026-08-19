@@ -188,7 +188,7 @@ static size_t thingNameLength;
  * accepted payload, it copies it into this buffer.
  */
 
-static uint8_t payloadBuffer[ CONFIG_MQTT_NETWORK_BUFFER_SIZE ];
+static uint8_t *payloadBuffer;
 
 /**
  * @brief Length of the payload stored in #payloadBuffer. This is set by the
@@ -533,6 +533,8 @@ int aws_iot_provisioning_main( int argc,
     // 읽어온 MAC 주소를 콜론 없이 대문자 16진수 문자열로 포맷팅합니다 (예: "28372F9C283C")
     snprintf(dynamicMacStr, sizeof(dynamicMacStr), "%02X%02X%02X%02X%02X%02X",
             mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
+
+    payloadBuffer = calloc(1, CONFIG_MQTT_NETWORK_BUFFER_SIZE);
     do
     {
         /* Initialize the buffer lengths to their max lengths. */
@@ -599,10 +601,23 @@ int aws_iot_provisioning_main( int argc,
             connectionEstablished = true;
 
             /**** Call the CreateCertificateFromCsr API ****/
-            if( status == true ) status = subscribeToCsrResponseTopics();
-            if( status == true ) status = generateKeyAndCsr( p11Session, pkcs11configLABEL_DEVICE_PRIVATE_KEY_FOR_TLS, pkcs11configLABEL_DEVICE_PUBLIC_KEY_FOR_TLS, csr, CSR_BUFFER_LENGTH, &csrLength );
-            if( status == true ) status = generateCsrRequest( payloadBuffer, CONFIG_MQTT_NETWORK_BUFFER_SIZE, csr, csrLength, &payloadLength );
-            if( status == true ) status = PublishToTopic( FP_CBOR_CREATE_CERT_PUBLISH_TOPIC, FP_CBOR_CREATE_CERT_PUBLISH_LENGTH, ( char * ) payloadBuffer, payloadLength );
+            if( status == true ) {
+                LogInfo(("subscribeToCsrResponseTopics"));
+                status = subscribeToCsrResponseTopics();
+            }
+            if( status == true ) {
+                LogInfo(("generateKeyAndCsr"));
+                status = generateKeyAndCsr( p11Session, pkcs11configLABEL_DEVICE_PRIVATE_KEY_FOR_TLS, pkcs11configLABEL_DEVICE_PUBLIC_KEY_FOR_TLS, csr, CSR_BUFFER_LENGTH, &csrLength );
+            }
+            if( status == true ) {
+                LogInfo(("generateCsrRequest"));
+                status = generateCsrRequest( payloadBuffer, CONFIG_MQTT_NETWORK_BUFFER_SIZE, csr, csrLength, &payloadLength );
+            }
+            if( status == true ) {
+                LogInfo(("PublishToTopic"));
+                status = PublishToTopic( FP_CBOR_CREATE_CERT_PUBLISH_TOPIC, FP_CBOR_CREATE_CERT_PUBLISH_LENGTH, ( char * ) payloadBuffer, payloadLength );
+            }
+
             if( status == true ) status = waitForResponse();
             if( status == true ) {
                 status = parseCsrResponse( payloadBuffer, payloadLength, certificate, &certificateLength, certificateId, &certificateIdLength, ownershipToken, &ownershipTokenLength );
@@ -667,6 +682,9 @@ int aws_iot_provisioning_main( int argc,
                     }
                     mqtt_subscribe_init();
                     pkcs11CloseSession( p11Session );
+
+                    
+                    free(payloadBuffer);
                     free(csr);
                     free(certificate);
                     free(ownershipToken);                    
@@ -716,6 +734,7 @@ int aws_iot_provisioning_main( int argc,
     {
         LogInfo( ( "Demo completed successfully." ) );
     }
+    free(payloadBuffer);
     free(csr);
     free(certificate);
     free(ownershipToken);

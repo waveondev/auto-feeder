@@ -1093,7 +1093,9 @@ bool PublishToTopic( const char * pTopicFilter,
         outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = topicFilterLength;
         outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = pPayload;
         outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = payloadLength;
-
+        LogInfo( ( "Published payload: (%d)%s",
+                    ( int ) payloadLength,
+                    ( const char * ) pPayload ) );
         /* Get a new packet id. */
         outgoingPublishPackets[ publishIndex ].packetId = MQTT_GetPacketId( pMqttContext );
 

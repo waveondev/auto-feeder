@@ -404,6 +404,16 @@ static void Opmode_task(void *pvParameter)
     float feed_diff = 0;
     uint8_t Food_Max = 0;
     uint8_t Food_Empty_count = 0;
+
+    switch(current_opmode)
+    {
+        case FEED_MODE_SCHEDULED_PORTION:
+            FoodDispense_Timer_Set(true, (app_config->dispense_duration * 60)*1000);
+        break;
+        case FEED_MODE_MANUAL_PORTION:
+            FoodDispense_Timer_Set(true, (app_config->dispense_duration * 60)*1000);
+        break;
+    }
     while (1) {
         uint32_t current_tick = xTaskGetTickCount();
 
@@ -464,7 +474,6 @@ static void Opmode_task(void *pvParameter)
 
                             if(Food_Max != 0 && (Food_Max % 10) == 0)
                             {
-                                FoodFeed_Timer_Set(true,120000);
                                 Feeder_coast();
                                 for(int i=0;i<5;i++)
                                 {

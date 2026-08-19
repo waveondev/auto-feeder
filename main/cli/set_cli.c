@@ -10,6 +10,7 @@
 #include "gpio_util.h"
 #include "isd2360.h"
 #include "app_feed_motor.h"
+#include "app_button.h"
 BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
     const char *pcParameter;
@@ -218,7 +219,11 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			else if (!strncmp(ag[1], "int", 3))
 			{
 				gpio_set_level(PIN_TOF0_INT, atoi(ag[2])?1:0);
-			}					
+			}		
+			else if (!strncmp(ag[1], "lock", 3))
+			{
+				Lock_Set(atoi(ag[2])?true:false);
+			}				
 			else if (!strncmp(ag[1], "bat", 3))
 			{
 				gpio_set_level(45, atoi(ag[2])?1:0);

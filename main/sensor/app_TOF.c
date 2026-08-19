@@ -281,7 +281,7 @@ bool VL53L0X_Detect(bool all_state)
         }
 
     }
-    if (GetIR_ADC() > 3) {
+    if (GetIR_ADC()) {
        // ESP_LOGI(TAG,"ADC = %d",GetIR_ADC());
         return true;
     } else {

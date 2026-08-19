@@ -199,7 +199,7 @@ static void get_sha256_of_partitions(void)
     esp_partition_get_sha256(esp_ota_get_running_partition(), sha_256);
     print_sha256(sha_256, "SHA-256 for current firmware: ");
 }
-#define CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL "http://192.168.0.50:8070/tcp-client.bin"
+
 void ota_main(const char* URL)
 {
     wifi_ap_record_t ap_info;
