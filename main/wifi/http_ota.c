@@ -16,7 +16,9 @@
 #include "esp_https_ota.h"
 #include "protocol_examples_common.h"
 #include "string.h"
+#ifdef CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
 #define CONFIG_EXAMPLE_USE_CERT_BUNDLE
+#endif
 #ifdef CONFIG_EXAMPLE_USE_CERT_BUNDLE
 #include "esp_crt_bundle.h"
 #endif
@@ -88,6 +90,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
     }
     return ESP_OK;
 }
+#if 1
 void simple_ota_example_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Starting OTA example task");
@@ -172,6 +175,120 @@ void simple_ota_example_task(void *pvParameter)
         esp_restart();
     }
 }
+#else
+void simple_ota_example_task(void *pvParameter)
+{
+    ESP_LOGI(TAG, "Starting OTA example task");
+    uint8_t state = 2;
+
+#ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
+    esp_netif_t *netif = get_example_netif_from_desc(bind_interface_name);
+    if (netif == NULL) {
+        ESP_LOGE(TAG, "Can't find netif from interface description");
+        abort();
+    }
+    struct ifreq ifr;
+    esp_netif_get_netif_impl_name(netif, ifr.ifr_name);
+    ESP_LOGI(TAG, "Bind interface name is %s", ifr.ifr_name);
+#endif
+
+    // 🟢 [1] SPIFFS에서 AmazonRootCA1.crt 읽어오기 (RAM 소모 최소화: ~1.2KB)
+    char *ca_cert_buf = NULL;
+    FILE *f = fopen("/spiffs/certs/AmazonRootCA1.crt", "r");
+    if (f != NULL) {
+        fseek(f, 0, SEEK_END);
+        long cert_len = ftell(f);
+        fseek(f, 0, SEEK_SET);
+
+        ca_cert_buf = (char *)malloc(cert_len + 1);
+        if (ca_cert_buf != NULL) {
+            fread(ca_cert_buf, 1, cert_len, f);
+            ca_cert_buf[cert_len] = '\0'; // strlen() 처리를 위한 필수 널 문자
+            ESP_LOGI(TAG, "Loaded AmazonRootCA1.crt from SPIFFS successfully (%ld bytes)", cert_len);
+        } else {
+            ESP_LOGE(TAG, "Failed to allocate memory for CA cert buffer!");
+        }
+        fclose(f);
+    } else {
+        ESP_LOGE(TAG, "Failed to open /spiffs/certs/AmazonRootCA1.crt!");
+    }
+
+    // 🟢 [2] HTTP Client 설정
+    esp_http_client_config_t config = {
+        .url = pvParameter,
+        
+        // Bundle 대신 SPIFFS에서 동적으로 가져온 단일 인증서 사용 (cert_pem 로직 진입)
+        .cert_pem = ca_cert_buf,
+        .cert_len = 0, // 0으로 지정해야 strlen()을 사용하는 cert_pem 조건문으로 들어감
+
+        .event_handler = _http_event_handler,
+        .keep_alive_enable = true,
+        .timeout_ms = 15000,   // 타임아웃 15초
+        .buffer_size = 2048,   // 0x7100 에러 방지를 위한 2KB 권장 버퍼 (4096보다 RAM 절약)
+
+#ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
+        .if_name = &ifr,
+#endif
+    };
+
+#ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL_FROM_STDIN
+    char url_buf[OTA_URL_SIZE];
+    if (strcmp(config.url, "FROM_STDIN") == 0) {
+        example_configure_stdin_stdout();
+        fgets(url_buf, OTA_URL_SIZE, stdin);
+        int len = strlen(url_buf);
+        url_buf[len - 1] = '\0';
+        config.url = url_buf;
+    } else {
+        ESP_LOGE(TAG, "Configuration mismatch: wrong firmware upgrade image url");
+        if (ca_cert_buf) free(ca_cert_buf);
+        abort();
+    }
+#endif
+
+#ifdef CONFIG_EXAMPLE_SKIP_COMMON_NAME_CHECK
+    config.skip_cert_common_name_check = true;
+#endif
+
+    OTA_Enable = 1;
+    esp_https_ota_config_t ota_config = {
+        .http_config = &config,
+    };
+
+    led_bit_enable(OTA_START_BIT);
+    ESP_LOGI(TAG, "Attempting to download update from %s", config.url);
+    
+    // 🟢 [3] HTTPS OTA 진행
+    esp_err_t ret = esp_https_ota(&ota_config);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "OTA Succeed, Rebooting...");
+    } else {
+        ESP_LOGE(TAG, "Firmware upgrade failed (0x%x)", ret);
+        OTA_Enable = 0;
+        led_bit_disable(OTA_START_BIT);
+        
+        // 🟢 [4] 실패 시 할당한 인증서 메모리 해제
+        if (ca_cert_buf) {
+            free(ca_cert_buf);
+        }
+        vTaskDelete(xOTA_Handle);
+    }
+
+    // 🟢 [5] 성공 시 메모리 해제 후 리부팅
+    if (ca_cert_buf) {
+        free(ca_cert_buf);
+    }
+
+    while (1) {
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        esp_restart();
+    }
+}
+#endif
+
+
+
 
 static void print_sha256(const uint8_t *image_hash, const char *label)
 {

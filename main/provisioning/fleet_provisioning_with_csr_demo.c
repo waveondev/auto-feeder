@@ -673,12 +673,12 @@ int aws_iot_provisioning_main( int argc,
                     if (is_already_registered == false)
                     {
                         LogInfo( ( "[최초 연결 완료] 백엔드에 기기 등록(REGISTRATION) 요청을 큐에 주입합니다." ) );
-                        mqtt_queue_send(MESSEGE_REGISTRATION);
+                        mqtt_queue_send(MESSEGE_REGISTRATION,NULL,0);
                     }
                     else
                     {
                         LogInfo( ( "[재부팅 연결 완료] 백엔드에 부트(BOOT) 알림을 큐에 주입합니다." ) );
-                        mqtt_queue_send(MESSEGE_BOOT);
+                        mqtt_queue_send(MESSEGE_BOOT,NULL,0);
                     }
                     mqtt_subscribe_init();
                     pkcs11CloseSession( p11Session );

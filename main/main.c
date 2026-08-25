@@ -50,9 +50,42 @@ static void filesystem_init(void)
     }
     ESP_LOGI("SPIFFS", "SPIFFS mounted successfully");
 }
+void check_reset_reason(void) {
+    esp_reset_reason_t reason = esp_reset_reason();
+    const char *TAG = "RESET_REASON";
+    switch (reason) {
+        case ESP_RST_POWERON:
+            ESP_LOGI(TAG, "전원 켜짐 (Power-on reset)");
+            break;
+        case ESP_RST_SW:
+            ESP_LOGI(TAG, "소프트웨어 재부팅 (esp_restart() 호출)");
+            break;
+        case ESP_RST_PANIC:
+            ESP_LOGE(TAG, "크래시 발생 (Exception/Panic reset)");
+            break;
+        case ESP_RST_INT_WDT:
+            ESP_LOGE(TAG, "인터럽트 워치독 작동 (Interrupt Watchdog)");
+            break;
+        case ESP_RST_TASK_WDT:
+            ESP_LOGE(TAG, "태스크 워치독 작동 (Task Watchdog)");
+            break;
+        case ESP_RST_WDT:
+            ESP_LOGE(TAG, "기타 워치독 작동 (Other Watchdog)");
+            break;
+        case ESP_RST_BROWNOUT:
+            ESP_LOGW(TAG, "전압 강하 (Brownout reset - 전원 불안정)");
+            break;
+        case ESP_RST_SDIO:
+            ESP_LOGI(TAG, "SDIO를 통한 리셋");
+            break;
+        default:
+            ESP_LOGI(TAG, "기타 원인으로 인한 리셋 (코드: %d)", reason);
+            break;
+    }
+}
 
-void app_main(void)
-{
+
+void app_main(void) {
     // =========================================================================
     // 1️NVS (비휘발성 플래시 메모리) 초기화
     // AWS 프로비저닝 과정에서 발급받은 "고유 인증서"와 "개인키"를 
@@ -65,6 +98,7 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    check_reset_reason();
     NVS_Flash_init();
 
     filesystem_init();
@@ -78,7 +112,7 @@ void app_main(void)
     opmode_task_init();
     Create_Tracker_Capture_Task();
     ble_task_init();
-    isd2360_taskinit();
+    //isd2360_taskinit();
 
 
     wifi_init();

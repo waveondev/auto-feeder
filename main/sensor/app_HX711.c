@@ -100,14 +100,26 @@ void HX711_Sensing(void)
         ESP_LOGE(TAG, "Could not read data: %d (%s)", r, esp_err_to_name(r));
         return;
     }
-    
-    error_count = 0;
+
     // 1. 순수 차이값(음수 포함)을 정수로 먼저 계산
     int32_t net_raw = hx711_data - app_config->case_raw_data;
 
     // 2. float 변수에 대입하여 명확하게 float으로 변환 후 나눗셈
     float net_raw_float = (float)net_raw;
     hx711_data_buf = (net_raw_float / app_config->hx1_scale);
+    if (hx711_data_buf < - 300.0f)
+    {
+        error_count++;
+        if(error_count == 10)
+        {
+            feeder_fault_enable(WEIGHT_SENSOR_ERR,true);
+        }
+        ESP_LOGE(TAG, "hx711 error");
+        return;
+    }  
+    
+    error_count = 0;
+
     if(DBG_Resister->HX711)
     {
             ESP_LOGI(TAG, "hx711_data: (%d)",hx711_data);

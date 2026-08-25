@@ -17,6 +17,7 @@ static const char *TAG = __FILE__;
 #define CH0_ADC_UNIT            ADC_UNIT_1
 // ESP32-S3 GPIO -> ADC1 채널 매핑
 #define ADC_CH_GPIO1   ADC_CHANNEL_0  // GPIO 1
+#define ADC_CH_GPIO2   ADC_CHANNEL_1  // GPIO 1
 #define ADC_CH_GPIO6   ADC_CHANNEL_5  // GPIO 6
 #define ADC_CH_GPIO7   ADC_CHANNEL_6  // GPIO 7
 #define EXAMPLE_ADC_ATTEN       ADC_ATTEN_DB_12 
@@ -24,14 +25,17 @@ static const char *TAG = __FILE__;
 
 
 static adc_cali_handle_t cali_ch0_handle = NULL;
+static adc_cali_handle_t cali_ch1_handle = NULL;
 static adc_cali_handle_t cali_ch5_handle = NULL;
 static adc_cali_handle_t cali_ch6_handle = NULL;
 static adc_cali_handle_t cali_ch7_handle = NULL;
 static bool do_cali_ch0 = false;
+static bool do_cali_ch1 = false;
 static bool do_cali_ch5 = false;
 static bool do_cali_ch6 = false;
 static bool do_cali_ch7 = false;
 static int ch0_mv = 0;
+static int ch1_mv = 0;
 static int ch5_mv = 0;
 static int ch6_mv = 0;  
 static int ch7_mv = 0; 
@@ -115,7 +119,7 @@ mv_ch0 > 800
 
 void ADC_Sensing(void)
 {
-    uint8_t result_buf[48] = {0};
+    uint8_t result_buf[64] = {0};
     uint32_t ret_num = 0;
     uint32_t number_sum = 0;
     esp_err_t ret =ESP_OK;
@@ -162,7 +166,14 @@ void ADC_Sensing(void)
                     }
                     
                 break;
-
+                case ADC_CHANNEL_1: // GPIO 1
+                    if (do_cali_ch1) {
+                        adc_cali_raw_to_voltage(cali_ch1_handle, raw, &mv_out);
+                        ch1_mv = mv_out;
+                        //ESP_LOGI(TAG, "bat adc %4dmV \r\n", ch1_mv);
+                    }
+                    
+                break;
                 case ADC_CHANNEL_5: // GPIO 6
                     if (do_cali_ch5) {
                         adc_cali_raw_to_voltage(cali_ch5_handle, raw, &mv_out);
@@ -219,7 +230,13 @@ void ADC_Sensing(void)
                 }
                 
                 break;
-
+            case ADC_CHANNEL_1: // GPIO 1
+                if (do_cali_ch1) {
+                    if(DBG_Resister->adc)
+                        ESP_LOGI(TAG, "bat Voltage: %4d mV", ch1_mv);
+                }
+                
+                break;
             case ADC_CHANNEL_5: // GPIO 6
                 if (do_cali_ch5) {
                     if(DBG_Resister->adc)
@@ -243,7 +260,7 @@ void ADC_Sensing(void)
                 break;
         } 
     }
-adc_continuous_stop(adc_handle);
+    adc_continuous_stop(adc_handle);
     if (ret == ESP_ERR_TIMEOUT) {
         timeout_count++;
         // 연속으로 10번 이상 TIMEOUT이 발생하면 ADC 드라이버가 멈춘 것으로 판단하고 재시작
@@ -267,7 +284,7 @@ void adc_init(void) {
 // 1. DMA 핸들 생성
     adc_continuous_handle_cfg_t handle_cfg = {
         .max_store_buf_size = 256,
-        .conv_frame_size = 48,
+        .conv_frame_size = 64,
     };
     ESP_ERROR_CHECK(adc_continuous_new_handle(&handle_cfg, &adc_handle));
 
@@ -278,13 +295,14 @@ void adc_init(void) {
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };
 
-    adc_digi_pattern_config_t adc_pattern[4] = {0};
+    adc_digi_pattern_config_t adc_pattern[5] = {0};
 
     // [채널 0] GPIO 1 (ADC_CHANNEL_0)
     adc_pattern[0].atten = EXAMPLE_ADC_ATTEN;
     adc_pattern[0].channel = ADC_CHANNEL_0;
     adc_pattern[0].unit = ADC_UNIT_1;
     adc_pattern[0].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+
 
     // [채널 5] GPIO 6 (ADC_CHANNEL_5)
     adc_pattern[1].atten = EXAMPLE_ADC_ATTEN;
@@ -304,13 +322,20 @@ void adc_init(void) {
     adc_pattern[3].unit = ADC_UNIT_1;
     adc_pattern[3].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
 
-    dig_cfg.pattern_num = 4;
+    // [채널 0] GPIO 2 (ADC_CHANNEL_1)
+    adc_pattern[4].atten = EXAMPLE_ADC_ATTEN;
+    adc_pattern[4].channel = ADC_CHANNEL_1;
+    adc_pattern[4].unit = ADC_UNIT_1;
+    adc_pattern[4].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+
+    dig_cfg.pattern_num = 5;
     dig_cfg.adc_pattern = adc_pattern;
 
     ESP_ERROR_CHECK(adc_continuous_config(adc_handle, &dig_cfg));
 
     // 3. 캘리브레이션은 기존 방식 그대로 유지!
     do_cali_ch0 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_0, EXAMPLE_ADC_ATTEN, &cali_ch0_handle);
+    do_cali_ch1 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_1, EXAMPLE_ADC_ATTEN, &cali_ch1_handle);
     do_cali_ch5 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_5, EXAMPLE_ADC_ATTEN, &cali_ch5_handle);
     do_cali_ch6 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_6, EXAMPLE_ADC_ATTEN, &cali_ch6_handle);
     do_cali_ch7 = init_adc_calibration(CH0_ADC_UNIT, ADC_CHANNEL_7, EXAMPLE_ADC_ATTEN, &cali_ch7_handle);

@@ -33,7 +33,7 @@ extern int aws_iot_provisioning_main( int argc, char ** argv );
 
 static void Health_timer_callback(void* arg)
 {
-    mqtt_queue_send(MESSEGE_HEALTH);
+    mqtt_queue_send(MESSEGE_HEALTH,NULL,0);
     //mqtt_queue_send(AWS_MESSEGE_AWS_JOBS_GET);
 
     
@@ -45,15 +45,29 @@ static void Health_timer_callback(void* arg)
 
 }
 
-bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd)
+bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, void* data, uint32_t data_len)
 {
+   mqtt_packet_t mqtt_packet = {0};
     if(mqtt_tx_queue == NULL)
     {
         ESP_LOGW("mqtt_tx", "mqtt_tx_queue NULL.");
         return false;        
     }
+    if(data != NULL)
+    {
+        mqtt_packet.data = calloc(1,data_len);
+        if(mqtt_packet.data != NULL)
+        {   
+            memcpy(mqtt_packet.data,data,data_len);
+        }   
+    }
+    
+
+    mqtt_packet.cmd = cmd;
+
+    mqtt_packet.data_len = data_len;
     ESP_LOGW("mqtt_tx", "mqtt_tx_queue send.");
-    if (xQueueSend(mqtt_tx_queue, &cmd, 0) != pdPASS) {
+    if (xQueueSend(mqtt_tx_queue, &mqtt_packet, 0) != pdPASS) {
         ESP_LOGW("mqtt_tx", "Queue full! Dropping packet and freeing memory.");
         return false;
     }
@@ -61,7 +75,7 @@ bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd)
 }
 void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  pack_data* data )
 {
-    tracker_mqtt_packet_t mqtt_packet;
+    tracker_mqtt_packet_t tracker_mqtt_packet;
 
     if(tracker_mqtt_queue == NULL)
     {
@@ -72,14 +86,14 @@ void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Pac
     }
 
 
-    memset(&mqtt_packet,0,sizeof(tracker_mqtt_packet_t));
-    mqtt_packet.cmd = cmd;
-    memcpy(mqtt_packet.mac,mac,sizeof(mqtt_packet.mac));
-    memcpy(&mqtt_packet.packet,packet,sizeof(Motion_Packet_t));
-    mqtt_packet.data_len = data_len;
-    mqtt_packet.data = data;
+    memset(&tracker_mqtt_packet,0,sizeof(tracker_mqtt_packet_t));
+    tracker_mqtt_packet.cmd = cmd;
+    memcpy(tracker_mqtt_packet.mac,mac,sizeof(tracker_mqtt_packet.mac));
+    memcpy(&tracker_mqtt_packet.packet,packet,sizeof(Motion_Packet_t));
+    tracker_mqtt_packet.data_len = data_len;
+    tracker_mqtt_packet.data = data;
     ESP_LOGW("mqtt_tx", "tracker_mqtt_queue send.");
-    if (xQueueSend(tracker_mqtt_queue, &mqtt_packet, 0) != pdPASS) {
+    if (xQueueSend(tracker_mqtt_queue, &tracker_mqtt_packet, 0) != pdPASS) {
         ESP_LOGW("mqtt_tx", "Queue full! Dropping packet and freeing memory.");
     }
 }
@@ -98,7 +112,7 @@ static void aws_iot_main_entry(void *pvParameters)
     // -------------------------------------------------------------
     // 1. [1회성 초기화] 큐 및 타이머 생성을 루프 밖에서 단 1번만 수행
     // -------------------------------------------------------------
-    mqtt_tx_queue = xQueueCreate(10, sizeof(messege_tx_mqtt_cmd_e));
+    mqtt_tx_queue = xQueueCreate(10, sizeof(mqtt_packet_t));
     tracker_mqtt_queue = xQueueCreate(10, sizeof(tracker_mqtt_packet_t));
 
     const esp_timer_create_args_t Health_timer_args = {
@@ -108,8 +122,8 @@ static void aws_iot_main_entry(void *pvParameters)
     ESP_ERROR_CHECK(esp_timer_create(&Health_timer_args, &Health_timer));
 
     int provisioning_count = 0;
-    messege_tx_mqtt_cmd_e cmd;
-    tracker_mqtt_packet_t mqtt_packet;
+    mqtt_packet_t mqtt_packet;
+    tracker_mqtt_packet_t tracker_mqtt_packet;
 
     // -------------------------------------------------------------
     // 2. [메인 재연결 루프]
@@ -147,15 +161,20 @@ static void aws_iot_main_entry(void *pvParameters)
 
         // MQTT 송수신 메인 루프
         for(;;) {
-            if (xQueueReceive(mqtt_tx_queue, &cmd, pdMS_TO_TICKS(10)) == pdTRUE) {
-                Send_cJSON_Messege(cmd);
-            }
-            if (xQueueReceive(tracker_mqtt_queue, &mqtt_packet, pdMS_TO_TICKS(10)) == pdTRUE) {
-                Send_cJSON_Messege_for_tracker(&mqtt_packet);
-            // ⭕ 훌륭함: 메시지 전송 처리 완료 후 동적 메모리 안전하게 해제
+            if (xQueueReceive(mqtt_tx_queue, &mqtt_packet, pdMS_TO_TICKS(10)) == pdTRUE) {
+                ESP_LOGW("mqtt_tx", "mqtt_rx = cmd  %d ",mqtt_packet.cmd);
+                Send_cJSON_Messege(&mqtt_packet);
                 if (mqtt_packet.data != NULL) {
                     free(mqtt_packet.data);
                     mqtt_packet.data = NULL; // Dangling Pointer 방지를 위해 NULL 처리 권장
+                }                
+            }
+            if (xQueueReceive(tracker_mqtt_queue, &tracker_mqtt_packet, pdMS_TO_TICKS(10)) == pdTRUE) {
+                Send_cJSON_Messege_for_tracker(&tracker_mqtt_packet);
+            // ⭕ 훌륭함: 메시지 전송 처리 완료 후 동적 메모리 안전하게 해제
+                if (tracker_mqtt_packet.data != NULL) {
+                    free(tracker_mqtt_packet.data);
+                    tracker_mqtt_packet.data = NULL; // Dangling Pointer 방지를 위해 NULL 처리 권장
                 }
             }
 

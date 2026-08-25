@@ -67,7 +67,7 @@ void bf_SingleClickAction(void) {
         led_bit_enable(LOCK_MODE_BIT);
         return;             
     }
-    feeder_mode_init();
+    feeder_mode_init(true ,FEED_MODE_DEVICE_BUTTON);
     
     ESP_LOGI(TAG,"Single Click Action executed \r\n");
 }

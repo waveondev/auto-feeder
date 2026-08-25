@@ -103,6 +103,14 @@ void dump_tracker_all_devices(void)
 
     printf("===================== TRACKER DEVICE DUMP END =====================\n\n");
 }
+void Tracker_intake_clear(void)
+{
+    for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
+        if (Tracker_Device[i] != NULL) {
+           Tracker_Device[i]->diff_Time = 0;
+        }
+    }
+}
 void Tracker_waterintake_end(uint32_t Weight)
 {
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
@@ -233,6 +241,19 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 }
 
 
+Tracker_Device_t* GetTracker_Id_Name(void)
+{
+    for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
+        if(Tracker_Device[i] != NULL)
+        {
+            if(Tracker_Device[i]->Enable)
+            {
+                return Tracker_Device[i];
+            }
+        }
+    }   
+    return NULL;
+}
 bool GetTracker_Id_active(void)
 {
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {

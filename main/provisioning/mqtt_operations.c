@@ -1093,9 +1093,7 @@ bool PublishToTopic( const char * pTopicFilter,
         outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = topicFilterLength;
         outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = pPayload;
         outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = payloadLength;
-        LogInfo( ( "Published payload: (%d)%s",
-                    ( int ) payloadLength,
-                    ( const char * ) pPayload ) );
+
         /* Get a new packet id. */
         outgoingPublishPackets[ publishIndex ].packetId = MQTT_GetPacketId( pMqttContext );
 
@@ -1140,30 +1138,24 @@ MQTTStatus_t Mqtt_process(void)
 }
 
 /*-----------------------------------------------------------*/
-bool ProcessLoopWithTimeout( uint32_t Timeout )
+bool ProcessLoopWithTimeout( uint32_t TimeoutMs )
 {
-    uint32_t ulMqttProcessLoopTimeoutTime;
-    uint32_t ulCurrentTime;
-
     MQTTStatus_t eMqttStatus = MQTTSuccess;
     bool returnStatus = false;
 
-    // Polling 주기 (10ms 추천: CPU 연산 낭비를 막으면서도 네트워크 응답을 민첩하게 감지)
-    const TickType_t xPollIntervalTicks = pdMS_TO_TICKS( 10 );
+    // 타임아웃 Ticks 계산
+    TickType_t xTimeoutTicks = pdMS_TO_TICKS( TimeoutMs );
+    TickType_t xStartTime = xTaskGetTickCount();
 
-    ulCurrentTime = mqttContext.getTime();
-    ulMqttProcessLoopTimeoutTime = ulCurrentTime + Timeout;
-
-    /* 지정한 타임아웃 시간이 다 될 때까지 10ms 단위로 대기하며 ProcessLoop 호출 */
-    while( ( ulCurrentTime < ulMqttProcessLoopTimeoutTime ) &&
+    /* 지정한 타임아웃 시간이 다 될 때까지 Mqtt_process 호출 */
+    while( ( xTaskGetTickCount() - xStartTime < xTimeoutTicks ) &&
            ( eMqttStatus == MQTTSuccess || eMqttStatus == MQTTNeedMoreBytes ) )
     {
         eMqttStatus = Mqtt_process();
 
-        vTaskDelay( xPollIntervalTicks );
-
-        // 시간 업데이트
-        ulCurrentTime = mqttContext.getTime();
+        // Mqtt_process 내부에서 수신 데이터가 없어 빠르게 리턴될 때만 
+        // CPU 점유율 방지를 위해 최소한의 Delay(1 Tick) 부여
+        vTaskDelay( 1 );
     }
 
     if( ( eMqttStatus != MQTTSuccess ) && ( eMqttStatus != MQTTNeedMoreBytes ) )

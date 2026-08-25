@@ -46,5 +46,9 @@ bool hardware_error_enable(void);
 bool sense_enable(void);
 bool pairing_enable(void);
 bool food_low_enable(void);
+bool food_empty_enable(void);
 void wifi_connect_success(void);
+bool motor_error_enable(void);
+bool motor_mode_enable(void);
+bool food_discharge_enable(void);
 #endif

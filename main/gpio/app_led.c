@@ -71,6 +71,10 @@ bool food_low_enable(void)
 {
     return (led_status_resister & FOOD_LOW_BIT);
 }
+bool food_empty_enable(void)
+{
+    return (led_status_resister & FOOD_EMPTY_BIT);
+}
 bool food_discharge_enable(void)
 {
     return (led_status_resister & FOOD_DISCHARGE_BIT);
@@ -81,14 +85,14 @@ bool lock_mode_enable(void)
 }
 bool motor_mode_enable(void)
 {
-    uint16_t motor_bit = (7 << 4); 
-    
+    uint16_t motor_bit = (FEED_MODE_BIT | SLID_MODE_BIT |ACC_MODE_BIT);  
     // 0이 아니면 하나라도 1이 켜져 있다는 의미
     return ((led_status_resister & motor_bit) != 0); 
 }
+
 bool motor_error_enable(void)
 {
-    uint16_t motor_bit = (7 << 1); 
+    uint16_t motor_bit = (FEED_ERROR_BIT | ACC_ERROR_BIT | SLID_ERROR_BIT); 
     
     // 0이 아니면 하나라도 1이 켜져 있다는 의미
     return ((led_status_resister & motor_bit) != 0); 
@@ -363,7 +367,7 @@ static void LED_task(void *pvParameter)
                     }
                     else 
                     #endif
-                    if(motor_error_enable())
+                    if(motor_error_enable() || food_empty_enable() || food_low_enable())
                     {
                         set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
                     }

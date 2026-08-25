@@ -206,7 +206,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			}	
 			else if (!strncmp(ag[1], "feed", 4))
 			{
-				feeder_mode_init();
+				feeder_mode_init(true, 1);
 			}		
 			else if (!strncmp(ag[1], "onoff", 5))
 			{
@@ -228,7 +228,14 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				gpio_set_level(45, atoi(ag[2])?1:0);
 			}	
-    
+			else if (!strncmp(ag[1], "close", 3))
+			{
+				app_config->sliding_close_mode = atoi(ag[2])?1:0;
+			}	
+			else if (!strncmp(ag[1], "flag", 3))
+			{
+				write_nvs_registration_flag(atoi(ag[2])?true:false);
+			}				
 
 			  
 			/* There are more parameters to return after this one. */

@@ -92,8 +92,8 @@ esp_err_t hx711_init(hx711_t *dev)
     gpio_config_t conf = {
         .pin_bit_mask = BIT64(dev->dout),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = 0,
-        .pull_down_en = 0,
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
         .intr_type = GPIO_INTR_DISABLE,
     };
     CHECK(gpio_config(&conf));

@@ -28,6 +28,14 @@ typedef enum{
 typedef struct
 {
     messege_tx_mqtt_cmd_e cmd;     
+    void* data;
+    uint32_t data_len;
+}mqtt_packet_t;
+
+
+typedef struct
+{
+    messege_tx_mqtt_cmd_e cmd;     
     uint8_t mac[6];    
     Motion_Packet_t packet;
     pack_data* data;
@@ -47,7 +55,7 @@ typedef struct
 #define FOOD_EMPTY                              (1<<10)
 
 
-void Send_cJSON_Messege(messege_tx_mqtt_cmd_e cmd);
+void Send_cJSON_Messege(mqtt_packet_t* mqtt_packet);
 
 void Send_cJSON_Messege_for_tracker(tracker_mqtt_packet_t* tracker_mqtt_packet);
 void feeder_fault_enable(uint16_t status, bool count);

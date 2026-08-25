@@ -70,27 +70,27 @@ BaseType_t prvMQTTformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen,
 			{
                     if (!strncmp(ag[2], "regi", 4))
                     {
-                        mqtt_queue_send(MESSEGE_REGISTRATION);
+                        mqtt_queue_send(MESSEGE_REGISTRATION,NULL,0);
                     }
                     else if (!strncmp(ag[2], "boot", 4))
                     {
-                        mqtt_queue_send(MESSEGE_BOOT);
+                        mqtt_queue_send(MESSEGE_BOOT,NULL,0);
                     }
                     else if (!strncmp(ag[2], "acc", 3))
                     {
-                        mqtt_queue_send(MESSEGE_ACCESS);
+                        mqtt_queue_send(MESSEGE_ACCESS,NULL,0);
                     }
                     else if (!strncmp(ag[2], "dri", 3))
                     {
-                        mqtt_queue_send(MESSEGE_INTAKE);
+                        mqtt_queue_send(MESSEGE_INTAKE,NULL,0);
                     }
                     else if (!strncmp(ag[2], "dia", 3))
                     {
-                        mqtt_queue_send(MESSEGE_DIAGNOSTICS);
+                        mqtt_queue_send(MESSEGE_DIAGNOSTICS,NULL,0);
                     }
                     else if (!strncmp(ag[2], "hea", 3))
                     {
-                        mqtt_queue_send(MESSEGE_HEALTH);
+                        mqtt_queue_send(MESSEGE_HEALTH,NULL,0);
                     }
             }
 			

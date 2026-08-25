@@ -4,6 +4,7 @@
 
 void Accum_Set(bool status);
 void init_acc_motor(void);
-void start_acc_motor_with_boost(void);
+
+void start_acc_motor_with_boost(bool status);
 #endif
 

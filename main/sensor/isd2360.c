@@ -222,6 +222,8 @@ void isd2360_spi_init(void) {
 void isd2360_set(int index)
 {
     ESP_LOGI(TAG, "큐 전송 시도 -> index = %d", index);
+    if(isd2360_queue == NULL)
+        return;
     BaseType_t xStatus = xQueueSend(isd2360_queue, &index, pdMS_TO_TICKS(100));
     
     if (xStatus == pdPASS) {

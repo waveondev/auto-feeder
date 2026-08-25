@@ -12,8 +12,10 @@
 #include "esp_random.h"
 #include "aws_iot_task.h"
 #include "app_button.h"
-#define OTA_URL "https://evtago.s3.ap-northeast-2.amazonaws.com/auto-feeder-v3.bin"
-
+#define OTA_URL1 "https://evtago.s3.ap-northeast-2.amazonaws.com/auto-feeder-v1.bin"
+#define OTA_URL2 "https://evtago.s3.ap-northeast-2.amazonaws.com/auto-feeder-v2.bin"
+#define OTA_URL3 "https://evtago.s3.ap-northeast-2.amazonaws.com/auto-feeder-v3.bin"
+#define OTA_URLF "https://evtago.s3.ap-northeast-2.amazonaws.com/auto-feeder-vf.bin"
 #include "app_HX711.h"
 #include "app_slid_motor.h"
 #include "app_acc_motor.h"
@@ -83,7 +85,7 @@ char* ble_decrypt_json_data(cJSON *data_obj) {
 
 // JSON 데이터를 암호화하여 APP에 전송
 void ble_send_encrypted_event(const char* event_type, const char* plain_data) {
-    // 1. 랜덤 IV(초기화 벡터) 12바이트 생성
+// 1. 랜덤 IV(초기화 벡터) 12바이트 생성
     unsigned char iv[12];
     esp_fill_random(iv, sizeof(iv)); 
     
@@ -356,11 +358,26 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
         Lock_Set(0);
         return;
     }    
-    if(strcmp(buf, "OTA") == 0)
+    if(strcmp(buf, "OTA1") == 0)
     {
-        ota_main(OTA_URL);
+        ota_main(OTA_URL1);
         return;
     }
+    if(strcmp(buf, "OTA2") == 0)
+    {
+        ota_main(OTA_URL2);
+        return;
+    }
+    if(strcmp(buf, "OTA3") == 0)
+    {
+        ota_main(OTA_URL3);
+        return;
+    }
+    if(strcmp(buf, "OTAF") == 0)
+    {
+        ota_main(OTA_URLF);
+        return;
+    }            
     if(strcmp(buf, "CAL") == 0)
     {
         HX711_cal_init(1);
@@ -378,7 +395,7 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
     }
     if(strcmp(buf, "VACUUM") == 0)
     {
-        start_acc_motor_with_boost();
+        start_acc_motor_with_boost(true);
         return;
     }
 

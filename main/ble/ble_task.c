@@ -86,12 +86,12 @@ static void ble_spp_client_scan(void)
 
     memset(&disc_params, 0, sizeof(disc_params));
     disc_params.filter_duplicates = 0; 
-    disc_params.passive = 0;           // Active 스캔 필수 (이름 요청용)
+    disc_params.passive = 1;           // Active 스캔 필수 (이름 요청용)
 
     // 🔴 [수정] 500ms 비콘 스캔을 위한 타이밍 최적화
     // interval과 window를 같게 설정하면 ESP32가 쉬지 않고 100% 확률로 계속 스캔 대기를 합니다.
-    disc_params.itvl = 400;            // 스캔 주기 (단위: 0.625ms, 즉 250ms)
-    disc_params.window = 400;          // 스캔 윈도우 (단위: 0.625ms, 즉 250ms) -> 100% 듀티 사이클
+    disc_params.itvl = 160;            // 스캔 주기 (단위: 0.625ms, 즉 250ms)
+    disc_params.window = 160;          // 스캔 윈도우 (단위: 0.625ms, 즉 250ms) -> 100% 듀티 사이클
 
     rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &disc_params, ble_spp_server_gap_event, NULL);
     if (rc != 0) {
@@ -405,7 +405,10 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         // 주변 기기 정보를 통합 저장할 저장소 (최대 20개)
         app_config_t* app_config = get_app_config();
         dev_info_t dev_list;
-        memset(&dev_list, 0,sizeof(dev_info_t));
+
+        if (event->disc.rssi < app_config->gate_way_rssi_th) {
+            return 0; // -55보다 큰 신호는 여기서 즉시 차단
+        }
 
         rc = ble_hs_adv_parse_fields(&fields, event->disc.data, event->disc.length_data);
         if (rc != 0) {
@@ -431,14 +434,7 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         if (fields.svc_data_uuid16 == NULL || fields.svc_data_uuid16_len <= 0) {
             return 0; // 서비스 데이터가 아예 없으면 차단
         }
-        // -----------------------------------------------------------------
-        // 1. ⚡️ [새로운 필터] RSSI 조건 검사 (간혹 부호가 헷갈릴 수 있으니 주의)
-        //    * 수신 감도가 -55 dBm 이하(예: -56, -60, -70 dBm처럼 멀리 있는 기기)인 경우만 통과
-        //    * 만약 -55보다 신호가 쌘 것(-50, -40 dBm 등)을 원하신 거라면 `>`로 부호를 바꿔주세요.
-        // -----------------------------------------------------------------
-        if (event->disc.rssi < app_config->gate_way_rssi_th) {
-            return 0; // -55보다 큰 신호는 여기서 즉시 차단
-        }
+
 
         uint16_t svc_uuid = (fields.svc_data_uuid16[1] << 8) | fields.svc_data_uuid16[0];
         if (svc_uuid == 0x1234)
@@ -459,10 +455,12 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         {
             return 0; // 다른 서비스 UUID는 차단
         }
+        memset(&dev_list, 0,sizeof(dev_info_t));
         for (int i = 0; i < 6; i++)
         {
             dev_list.addr[i] = event->disc.addr.val[5-i];
         }
+
         // 최신 이름과 RSSI 데이터 업데이트 저장
         strcpy(dev_list.name, current_packet_name);
         dev_list.rssi = event->disc.rssi;

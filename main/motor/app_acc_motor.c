@@ -24,9 +24,14 @@ void Accum_Set(bool status)
         gpio_set_level(ACUUM_PWM_IN, 0);
 }
 
-void start_acc_motor_with_boost(void)
+void start_acc_motor_with_boost(bool status)
 {
     // 이미 모터가 동작 중이면 중복 요청 방지
+    if(status == false)
+    {
+        is_motor_running = false;
+        return;
+    }
     if (is_motor_running) {
         ESP_LOGW(TAG, "모터가 이미 동작 중입니다.");
         return;
@@ -37,7 +42,54 @@ void start_acc_motor_with_boost(void)
         ESP_LOGI("SENDER", "모터 동작 세마포어 송신!");
     }
 }
+static void acc_motor_callback(void)
+{
+    int received_data;
+    app_config_t* app_config = get_app_config();
+    uint32_t acc_stuck_count = 0;
+    bool vacuum_success = false;
+    acc_stuck_count = 0;
 
+    Accum_Set(true);
+    vTaskDelay(1000);
+    while (acc_stuck_count < app_config->motor_stuck_retry_count && !vacuum_success) {
+
+        for (int i = 0; i < 600; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+                    
+            if(Feed_Front_Enable() == false)
+            {
+                Accum_Set(false);
+                break;
+            }
+            int adc_val = GetAcc_ADC(); 
+
+            if (adc_val > 600) {
+                ESP_LOGI(TAG, "진공 도달 성공! (ADC: %d)", adc_val);
+                vacuum_success = true;
+                break; 
+            }
+            if(is_motor_running == false)
+            {
+                Accum_Set(false);
+                return; 
+            } 
+        }
+
+        if (!vacuum_success) {
+            acc_stuck_count++;
+            ESP_LOGW(TAG, "진공 도달 실패.. 재시도 횟수: %d", acc_stuck_count);
+        }
+    }
+
+    if (!vacuum_success) {
+        led_bit_enable(ACC_ERROR_BIT);
+        feeder_fault_enable(VACUUM_FAIL,true);
+        
+        ESP_LOGE(TAG, "최종 진공 형성 실패 (3회 타임아웃)");
+    }
+    Accum_Set(false);
+}
 // 진공 모터 전용 제어 태스크
 static void acc_motor_boost_task(void *pvParameters)
 {
@@ -51,43 +103,7 @@ static void acc_motor_boost_task(void *pvParameters)
         {            
             led_bit_enable(ACC_MODE_BIT);
             is_motor_running = true;
-            bool vacuum_success = false;
-            acc_stuck_count = 0;
-   
-            Accum_Set(true);
-            vTaskDelay(1000);
-            while (acc_stuck_count < app_config->motor_stuck_retry_count && !vacuum_success) {
-
-                for (int i = 0; i < 600; i++) {
-                    vTaskDelay(pdMS_TO_TICKS(100));
-                            
-                    if(Feed_Front_Enable() == false)
-                    {
-                        Accum_Set(false);
-                        break;
-                    }
-                    int adc_val = GetAcc_ADC(); 
-
-                    if (adc_val > 370) {
-                        ESP_LOGI(TAG, "진공 도달 성공! (ADC: %d)", adc_val);
-                        vacuum_success = true;
-                        break; 
-                    }
-                }
-
-                if (!vacuum_success) {
-                    acc_stuck_count++;
-                    ESP_LOGW(TAG, "진공 도달 실패.. 재시도 횟수: %d", acc_stuck_count);
-                }
-            }
-
-            if (!vacuum_success) {
-                led_bit_enable(ACC_ERROR_BIT);
-                feeder_fault_enable(VACUUM_FAIL,true);
-                
-                ESP_LOGE(TAG, "최종 진공 형성 실패 (3회 타임아웃)");
-            }
-            Accum_Set(false);
+            acc_motor_callback();
             led_bit_disable(ACC_MODE_BIT);
             is_motor_running = false;
         }
