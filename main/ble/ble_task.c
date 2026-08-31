@@ -348,11 +348,14 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
             ESP_LOGI("BLE_GAP", "현재 연결된 기기 수: %d / %d", 
                         count_client(), CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
         } 
+        delay_adv_timer_cb(NULL);
+        #if 0
         static TimerHandle_t adv_timer = NULL;
         if (adv_timer == NULL) {
             adv_timer = xTimerCreate("adv_delay", pdMS_TO_TICKS(300), pdFALSE, NULL, delay_adv_timer_cb);
         }
         xTimerStart(adv_timer, 0);
+        #endif
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
@@ -371,7 +374,7 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         if (event->disconnect.conn.conn_handle <= CONFIG_BT_NIMBLE_MAX_CONNECTIONS) {
             conn_handle_subs[event->disconnect.conn.conn_handle] = false;
         }
-        ble_spp_server_advertise();
+        delay_adv_timer_cb(NULL);
         return 0;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
@@ -383,7 +386,7 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
-        ble_spp_server_advertise();
+        delay_adv_timer_cb(NULL);
         return 0;
     case BLE_GAP_EVENT_CONN_UPDATE:
             MODLOG_DFLT(INFO, "Connection updated; status=%d\n", event->conn_update.status);
@@ -523,7 +526,7 @@ static void ble_spp_server_on_sync(void)
     }
 
     // 내 신호 전송 시작
-    ble_spp_server_advertise();
+    delay_adv_timer_cb(NULL);
 
     // 🔴 [추가] 동기화 완료 후 비콘 스캔 엔진 가동
     ble_spp_client_scan();

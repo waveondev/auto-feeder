@@ -16,6 +16,9 @@
 #include "app_feed_motor.h"
 #include "app_sensor.h"
 #include "isd2360.h"
+#ifndef max
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 static QueueHandle_t opModeQueue = NULL;
 
 static const char* TAG = __FILE__;
@@ -191,7 +194,7 @@ static void Slid_weight_timer_callback(void* arg)
             {
                 INTAKE_Packet.start_weight = start_weight;
                 INTAKE_Packet.end_weight = loadcell_data_get();
-                INTAKE_Packet.weight_delta = diff_weight;
+                INTAKE_Packet.weight_delta = max(diff_weight,0);
                 INTAKE_Packet.duration_sec = 10;
                 Tracker_waterintake_end((uint32_t)(diff_weight));
                 mqtt_queue_send(MESSEGE_INTAKE,&INTAKE_Packet,sizeof(INTAKE_Packet_t));

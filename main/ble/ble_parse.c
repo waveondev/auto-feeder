@@ -284,7 +284,7 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
                     // 검색된 AP가 없을 때의 예외 처리
                     ble_send_encrypted_event("wifi_list", "{\"aps\":[]}");
                 }
-                
+                wifi_list_clear();
                 cJSON_Delete(data_obj);
 
             }// [F] wifi_prov

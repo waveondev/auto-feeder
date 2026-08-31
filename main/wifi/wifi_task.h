@@ -14,7 +14,7 @@ extern EventGroupHandle_t s_wifi_event_group;
 
 // 외부에서 ap_list를 읽을 수 있도록 extern 선언
 extern wifi_ap_record_t *ap_list;
-
+void wifi_list_clear(void);
 void Wifi_Disconnect(void);
 void wifi_init(void); 
 uint16_t wifi_scan_start(void);

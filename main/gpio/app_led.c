@@ -179,7 +179,7 @@ void set_rgb_led(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
 
     for(int i=0;i<LED_NUMBERS;i++)
     {
-         led_strip_set_pixel_rgbw(led_strip, i, R, G, B, W);
+         led_strip_set_pixel_rgbw(led_strip, 0, R, G, B, W);
     }
     // 실제 SK6812 칩들로 32비트 정밀 신호 전송
 
@@ -340,7 +340,7 @@ static void LED_task(void *pvParameter)
    
         if(DBG_Resister->led)
         {
-
+            Breathing_LED();  
         }
         else
         {

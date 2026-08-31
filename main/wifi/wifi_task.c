@@ -147,6 +147,13 @@ void wifi_init_sta_static_ip(char* WIFI_SSID, char* WIFI_PASS)
 
 wifi_ap_record_t* ap_list = NULL;
 uint16_t total_found_count = 0; // 중복 제거 후 최종적으로 모은 AP 개수
+void wifi_list_clear(void)
+{
+    if (ap_list != NULL) {
+        free(ap_list);
+        ap_list = NULL;
+    }
+}
 uint16_t remove_duplicate_best_rssi(wifi_ap_record_t *list, uint16_t count)
 {
 
@@ -189,11 +196,7 @@ uint16_t remove_duplicate_best_rssi(wifi_ap_record_t *list, uint16_t count)
 
 uint16_t wifi_scan_start(void)
 {
-    if (ap_list != NULL) {
-        free(ap_list);
-        ap_list = NULL;
-    }
-
+    wifi_list_clear();
     total_found_count = 0;
     // 스캔 설정
     wifi_scan_config_t scan_config = {

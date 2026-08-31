@@ -159,6 +159,7 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
     float data_weight = 0;
     Tracker_Device_t* Tracker_Name = NULL;
     esp_reset_reason_t reason = esp_reset_reason();
+    double weight = 0;
     // 현재 연결된 AP 정보 가져오기 (성공 시 ESP_OK 반환)
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) 
     {
@@ -219,7 +220,10 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
             
 // 🔧 수정: 문자열이 아닌 Float(숫자) 타입으로 전달해야 함
             if(mqtt_packet->data != NULL)
+            {
                 data_weight = *(float *)mqtt_packet->data;
+                weight = round((double)data_weight * 100.0) / 100.0;
+            }   
             cJSON_AddNumberToObject(data_obj, "start_weight", data_weight);
         break;
         case MESSEGE_INTAKE:
@@ -256,12 +260,12 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
             {
                 INTAKE_Packet = (INTAKE_Packet_t*)mqtt_packet->data;
                 // 5. 나머지 숫자 및 선택 필드 추가
-                INTAKE_Packet->start_weight = roundf(INTAKE_Packet->start_weight * 100.0f) / 100.0f;
-                cJSON_AddNumberToObject(data_obj, "start_weight", INTAKE_Packet->start_weight);   // Float
-                INTAKE_Packet->end_weight = roundf(INTAKE_Packet->end_weight * 100.0f) / 100.0f;                
-                cJSON_AddNumberToObject(data_obj, "end_weight", INTAKE_Packet->end_weight);     // Float
-                INTAKE_Packet->weight_delta = roundf(INTAKE_Packet->weight_delta * 100.0f) / 100.0f;                        
-                cJSON_AddNumberToObject(data_obj, "weight_delta", INTAKE_Packet->weight_delta); // Float
+                weight = roundf((double)INTAKE_Packet->start_weight * 100.0) / 100.0;
+                cJSON_AddNumberToObject(data_obj, "start_weight", weight);   // Float
+                weight = roundf((double)INTAKE_Packet->end_weight * 100.0) / 100.0;
+                cJSON_AddNumberToObject(data_obj, "end_weight", weight);     // Float
+                weight = roundf((double)INTAKE_Packet->weight_delta * 100.0) / 100.0;
+                cJSON_AddNumberToObject(data_obj, "weight_delta", weight); // Float
                 cJSON_AddNumberToObject(data_obj, "duration_sec", INTAKE_Packet->duration_sec);     // Integer                
             }
             else
