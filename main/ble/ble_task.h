@@ -16,6 +16,7 @@ typedef struct {
     uint8_t *data; 
 } ble_data_msg_t;
 /* Attributes State Machine */
+void print_connected_clients(void);
 bool ble_send_data_to_queue(uint16_t* conn_handle, const uint8_t *data, uint16_t len);
 void Motion_Timer_Set(const uint8_t *mac, bool state);
 void ble_task_init(void);

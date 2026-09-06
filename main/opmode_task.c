@@ -44,6 +44,7 @@ static bool diff_enable = false;
 #define FEED_DEFAULT_TIME_MIN 5
 void FoodDispense_Timer_Set(bool state,uint32_t timeout);
 void Foodempty_Timer_Set(bool state,uint32_t timeout);
+void set_mode_state(void);
 typedef enum{
     SLID_IN = 0,
     SLID_IN_ING,
@@ -53,7 +54,8 @@ typedef enum{
     FEED_FAIL,    
 }FeederState_e;
 static FeederState_e FeederState = SLID_IN;
-
+static float feed_level = 0;
+static bool mode_change_flag = false;
 static void opmode_timer_callback(void* arg)
 {
     //ESP_LOGI(TAG, "3초 동안 추가 입력이 없어 현재 모드로 확정합니다: %d", current_opmode);
@@ -112,22 +114,12 @@ void Opmode_Set(void)
     app_config_t* app_config = get_app_config();
     if(feeder_mode_flag)
         return;
-    switch(current_opmode)
-    {
-        case FEED_MODE_SCHEDULED_PORTION:
-            current_opmode = FEED_MODE_MANUAL_PORTION;
-            FoodDispense_Timer_Set(true, MIN_TO_US(app_config->dispense_duration));
-        break;
-        case FEED_MODE_MANUAL_PORTION:
-            current_opmode = FEED_MODE_FREE_FEEDING;
-            FoodDispense_Timer_Set(false, 0);
-        break;
-        case FEED_MODE_FREE_FEEDING:
-        default:
-            current_opmode = FEED_MODE_SCHEDULED_PORTION;
-            FoodDispense_Timer_Set(true, MIN_TO_US(app_config->dispense_duration));
-        break;
-    }
+    current_opmode++;
+    if(current_opmode > FEED_MODE_FREE_FEEDING)
+        current_opmode = FEED_MODE_SCHEDULED_PORTION;
+
+    mode_change_flag = true;
+
     app_config->op_mode = current_opmode;
     if(!Sliding_Back_Enable())
         Slid_Close_Timer_Set(true, SEC_TO_US(10),__LINE__);
@@ -368,6 +360,7 @@ bool feeder_mode_init(bool status, uint8_t mode)
         }
         if(start_weight != 0)
         {
+            Slid_Close_Timer_Set(true, SEC_TO_US(1),__LINE__);
             return false;
         }    
     }
@@ -378,10 +371,6 @@ bool feeder_mode_init(bool status, uint8_t mode)
     }
     led_bit_disable(FEED_ERROR_BIT | ACC_ERROR_BIT | SLID_ERROR_BIT);
     
-
-
-
-
     if(feeder_mode_flag == FEED_MODE_NONE)
     {
         Slid_Close_Timer_Set(true, SEC_TO_US(1),__LINE__);
@@ -479,28 +468,46 @@ void Smart_Feeder(void)
     }
 }
 
+void set_mode_state(void)
+{
+    app_config_t* app_config = get_app_config();
+    while(Sliding_Back_Enable() == false)
+    {
+        vTaskDelay(100);
+    }
+    switch(current_opmode)
+    {
+        case FEED_MODE_SCHEDULED_PORTION:
+            FoodDispense_Timer_Set(true, MIN_TO_US(app_config->dispense_duration));
+            feed_level = 0;
+        break;
+        case FEED_MODE_MANUAL_PORTION:
+            FoodDispense_Timer_Set(true, MIN_TO_US(app_config->dispense_duration));
+            feed_level = 0;
+        break;
+        case FEED_MODE_FREE_FEEDING:
+        default:
+            FoodDispense_Timer_Set(false, 0);
+            feed_level = loadcell_data_get();
+        break;
+    }
+}
+
 static void Opmode_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Starting Opmode_task");
     app_config_t* app_config = get_app_config();
 
-    
     float feed_start = 0;
     float feed_diff = 0;
     uint8_t Food_Max = 0;
     uint8_t Food_Empty_count = 0;
     vTaskDelay(5000);
-    switch(current_opmode)
-    {
-        case FEED_MODE_SCHEDULED_PORTION:
-            FoodDispense_Timer_Set(true, MIN_TO_US(app_config->dispense_duration));
-        break;
-        case FEED_MODE_MANUAL_PORTION:
-            FoodDispense_Timer_Set(true, MIN_TO_US(app_config->dispense_duration));
-        break;
-    }
+    mode_change_flag = true;
+
+
     while (1) {
-        uint32_t current_tick = xTaskGetTickCount();
+
 
         DBG_Resister_t* DBG_Resister = Debug_Get();
         if(DBG_Resister->motor)
@@ -509,164 +516,170 @@ static void Opmode_task(void *pvParameter)
         }
         else
         {
-            Smart_Feeder();
-            CleanMode();
-            if(feeder_mode_flag)
+            if(mode_change_flag == true)
             {
-                DISPENSE_Packet_t DISPENSE_Packet = {0};
-                switch(FeederState)
-                {
-                    case SLID_IN :
-                        Food_Max = 0;
-                        Feeder_coast();
-                        start_acc_motor_with_boost(false);
-
-                        FeederState = SLID_IN_ING;
-                    break;
-                    case SLID_IN_ING :
-                        if(Sliding_Back_Enable())
-                        {
-                            FeederState = SLID_IN_END;
-                            vTaskDelay(pdMS_TO_TICKS(3000)); 
-                        }
-                    break;
-                    case SLID_IN_END :
-                        feed_start = loadcell_data_get();//초기 로드셀 무게
-                       //if(current_opmode == FEED_MODE_FREE_FEEDING)
-                            //feed_start = 0.0f;
-                            
-                        Feeder_CW();
-
-                        if(Food_Detected_State())
-                        {
-                            feeder_fault_enable(FOOD_LOW,true);
-                            led_bit_enable(FOOD_LOW_BIT);
-                        }
-                        else
-                            led_bit_disable(FOOD_LOW_BIT);             
-
-                        FoodFeed_Timer_Set(true,MIN_TO_US(2));
-                        FeederState = FEED_ING;
-                    break;
-                    case FEED_ING :                        
-                            if(Food_Door_Detected_State())
-                            {
-                                Food_Max++;
-                            }
-                            else
-                            {
-                                Food_Max = 0;
-                            }
-
-                            if(Food_Max != 0 && (Food_Max % 10) == 0)
-                            {
-                                Feeder_coast();
-                                for(int i=0;i<5;i++)
-                                {
-                                    Sliding_CW(100);
-                                    while(Sliding_Back_Enable() == true)
-                                    {
-                                        vTaskDelay(10);
-                                    }
-                                    vTaskDelay(300);
-                                    Sliding_CCW(100);
-                                    while(Sliding_Back_Enable() == false)
-                                    {
-                                        vTaskDelay(10);
-                                    }
-                                }
-                                vTaskDelay(1000);
-                                Feeder_CW();
-                                ESP_LOGI(TAG,"Food_Max = %d",Food_Max);
-                            }
-                            feed_diff = loadcell_data_get() - feed_start;                   
-
-                            float gram = (float)app_config->dispense_amount_g;
-                            if(feed_diff >= gram-10)
-                            {
-                                Feeder_coast();
-                                vTaskDelay(2000);
-                                feed_diff = loadcell_data_get() - feed_start;
-                                if(feed_diff >= gram-3)
-                                {
-                                    FoodFeed_Timer_Set(false,0);
-                                    ESP_LOGI(TAG,"Start: %.2f | Current: %.2f | Diff: %.2f\r\n", feed_start, loadcell_data_get(), feed_diff);
-                                    FeederState = FEED_END; // 조건 만족 시 FEED_END로 변경
-                                    break;
-                                }                    
-                                else
-                                {
-                                    Feeder_CW(); 
-                                    vTaskDelay(200);  
-                                }    
-                            }                            
-
-                    break;
-                    case FEED_END :
-                        Feeder_CCW();         
-                        while(Feed_Front_Enable() == false)
-                        {
-                            vTaskDelay(10);
-                        }
-                        DISPENSE_Packet.trigger = feeder_mode_flag;
-                        DISPENSE_Packet.target_amount = feed_start + (float)app_config->dispense_amount_g;
-                        DISPENSE_Packet.dispensed_amount = loadcell_data_get();
-                        DISPENSE_Packet.residual_weight = feed_start;
-                        DISPENSE_Packet.status = true;
-                        feeder_mode_flag = FEED_MODE_NONE;   
-
-                        mqtt_queue_send(MESSEGE_DISPENSE,&DISPENSE_Packet,sizeof(DISPENSE_Packet)); 
-                        if(current_opmode == FEED_MODE_SCHEDULED_PORTION)
-                            Open_Slid();
-                    break;
-                    case FEED_FAIL :
-                        Foodempty_Timer_Set(true, SEC_TO_US(1));
-                        DISPENSE_Packet.trigger = feeder_mode_flag;
-                        DISPENSE_Packet.target_amount = feed_start + (float)app_config->dispense_amount_g;
-                        DISPENSE_Packet.dispensed_amount = loadcell_data_get();
-                        DISPENSE_Packet.residual_weight = feed_start;
-                        DISPENSE_Packet.status = false;
-
-                        mqtt_queue_send(MESSEGE_DISPENSE,&DISPENSE_Packet,sizeof(DISPENSE_Packet)); 
-                        led_bit_enable(FOOD_EMPTY_BIT);
-                        feeder_fault_enable(FOOD_EMPTY,true);
-                        Feeder_coast();
-                        feeder_mode_flag = FEED_MODE_NONE;
-                    break;
-                }
+                mode_change_flag = false;
+                set_mode_state();
             }
             else
             {
-                switch(current_opmode)
+                Smart_Feeder();
+                CleanMode();
+                if(feeder_mode_flag)
                 {
-                    case FEED_MODE_SCHEDULED_PORTION:
+                    DISPENSE_Packet_t DISPENSE_Packet = {0};
+                    switch(FeederState)
+                    {
+                        case SLID_IN :
+                            Food_Max = 0;
+                            Feeder_coast();
+                            start_acc_motor_with_boost(false);
 
-                    break;
-                    case FEED_MODE_MANUAL_PORTION:
-                        if(VL53L0X_Detect(true))
-                        {
-                            Open_Slid();
-                        }
-                    break;
-                    case FEED_MODE_FREE_FEEDING:
-                        float gram = (float)app_config->dispense_amount_g;
-                        if(Sliding_Back_Enable() && (loadcell_data_get() < gram))
-                        {
-                            feeder_mode_init(true, FEED_MODE_AUTO_REFILL);
-                        }
-                        else
-                        {
+                            FeederState = SLID_IN_ING;
+                        break;
+                        case SLID_IN_ING :
+                            if(Sliding_Back_Enable())
+                            {
+                                FeederState = SLID_IN_END;
+                                vTaskDelay(pdMS_TO_TICKS(3000)); 
+                            }
+                        break;
+                        case SLID_IN_END :
+                            feed_start = loadcell_data_get();//초기 로드셀 무게
+                                
+                            Feeder_CW();
+
+                            if(Food_Detected_State())
+                            {
+                                feeder_fault_enable(FOOD_LOW,true);
+                                led_bit_enable(FOOD_LOW_BIT);
+                            }
+                            else
+                                led_bit_disable(FOOD_LOW_BIT);             
+
+                            FoodFeed_Timer_Set(true,MIN_TO_US(2));
+                            FeederState = FEED_ING;
+                        break;
+                        case FEED_ING :                        
+                                if(Food_Door_Detected_State())
+                                {
+                                    Food_Max++;
+                                }
+                                else
+                                {
+                                    Food_Max = 0;
+                                }
+
+                                if(Food_Max != 0 && (Food_Max % 10) == 0)
+                                {
+                                    Feeder_coast();
+                                    for(int i=0;i<5;i++)
+                                    {
+                                        Sliding_CW(100);
+                                        while(Sliding_Back_Enable() == true)
+                                        {
+                                            vTaskDelay(10);
+                                        }
+                                        vTaskDelay(300);
+                                        Sliding_CCW(100);
+                                        while(Sliding_Back_Enable() == false)
+                                        {
+                                            vTaskDelay(10);
+                                        }
+                                    }
+                                    vTaskDelay(1000);
+                                    Feeder_CW();
+                                    ESP_LOGI(TAG,"Food_Max = %d",Food_Max);
+                                }
+                                feed_diff = loadcell_data_get() - feed_start;                   
+
+                                float gram = (float)app_config->dispense_amount_g;
+                                if(feed_diff >= gram-10)
+                                {
+                                    Feeder_coast();
+                                    vTaskDelay(2000);
+                                    feed_diff = loadcell_data_get() - feed_start;
+                                    if(feed_diff >= gram-3)
+                                    {
+                                        FoodFeed_Timer_Set(false,0);
+                                        ESP_LOGI(TAG,"Start: %.2f | Current: %.2f | Diff: %.2f\r\n", feed_start, loadcell_data_get(), feed_diff);
+                                        FeederState = FEED_END; // 조건 만족 시 FEED_END로 변경
+                                        break;
+                                    }                    
+                                    else
+                                    {
+                                        Feeder_CW(); 
+                                        vTaskDelay(200);  
+                                    }    
+                                }                            
+
+                        break;
+                        case FEED_END :
+                            Feeder_CCW();         
+                            while(Feed_Front_Enable() == false)
+                            {
+                                vTaskDelay(10);
+                            }
+                            DISPENSE_Packet.trigger = feeder_mode_flag;
+                            DISPENSE_Packet.target_amount = feed_start + (float)app_config->dispense_amount_g;
+                            DISPENSE_Packet.dispensed_amount = loadcell_data_get();
+                            DISPENSE_Packet.residual_weight = feed_start;
+                            DISPENSE_Packet.status = true;
+                            feeder_mode_flag = FEED_MODE_NONE;   
+
+                            mqtt_queue_send(MESSEGE_DISPENSE,&DISPENSE_Packet,sizeof(DISPENSE_Packet)); 
+                            if(current_opmode == FEED_MODE_SCHEDULED_PORTION)
+                                Open_Slid();
+                        break;
+                        case FEED_FAIL :
+                            Foodempty_Timer_Set(true, SEC_TO_US(1));
+                            DISPENSE_Packet.trigger = feeder_mode_flag;
+                            DISPENSE_Packet.target_amount = feed_start + (float)app_config->dispense_amount_g;
+                            DISPENSE_Packet.dispensed_amount = loadcell_data_get();
+                            DISPENSE_Packet.residual_weight = feed_start;
+                            DISPENSE_Packet.status = false;
+
+                            mqtt_queue_send(MESSEGE_DISPENSE,&DISPENSE_Packet,sizeof(DISPENSE_Packet)); 
+                            led_bit_enable(FOOD_EMPTY_BIT);
+                            feeder_fault_enable(FOOD_EMPTY,true);
+                            Feeder_coast();
+                            feeder_mode_flag = FEED_MODE_NONE;
+                        break;
+                    }
+                }
+                else
+                {
+                    switch(current_opmode)
+                    {
+                        case FEED_MODE_SCHEDULED_PORTION:
+
+                        break;
+                        case FEED_MODE_MANUAL_PORTION:
                             if(VL53L0X_Detect(true))
                             {
                                 Open_Slid();
                             }
-                        }
+                        break;
+                        case FEED_MODE_FREE_FEEDING:
+                            float gram = (float)app_config->dispense_amount_g + feed_level;
+                            if(Sliding_Back_Enable() && (loadcell_data_get() < gram))
+                            {
+                                feeder_mode_init(true, FEED_MODE_AUTO_REFILL);
+                            }
+                            else
+                            {
+                                if(VL53L0X_Detect(true))
+                                {
+                                    Open_Slid();
+                                }
+                            }
 
-                    break;
-                    default:
-                    break;
-                }
-            } 
+                        break;
+                        default:
+                        break;
+                    }
+                } 
+            }
         }
 
         vTaskDelay(10 / portTICK_PERIOD_MS);

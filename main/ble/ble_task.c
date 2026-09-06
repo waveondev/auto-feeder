@@ -153,6 +153,10 @@ static void ble_spp_server_advertise(void)
         ble_spp_server_gap_event,
         NULL
     );
+    if (rc != 0) {
+        // 에러 코드 출력 확인용
+        ESP_LOGE("ADV", "Advertising start failed: rc=%d", rc);
+    }
 }
 
 
@@ -167,6 +171,35 @@ typedef struct {
 } client_info_t;
 
 client_info_t connected_clients[CONFIG_BT_NIMBLE_MAX_CONNECTIONS];
+
+void print_connected_clients(void)
+{
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        client_info_t *client = &connected_clients[i];
+
+        if (client->is_connected) 
+        {
+            ESP_LOGI(TAG,
+                    "[%d] conn_handle=%u, "
+                    "MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+                    "timer_count=%lu, "
+                    "xMotionTimer=%p, "
+                    "xtimer=%p",
+                    i,
+                    client->conn_handle,
+                    client->mac_addr[5],
+                    client->mac_addr[4],
+                    client->mac_addr[3],
+                    client->mac_addr[2],
+                    client->mac_addr[1],
+                    client->mac_addr[0],
+                    (unsigned long)client->timer_count,
+                    (void *)client->xMotionTimer,
+                    (void *)client->xtimer);
+        }
+    }
+}
+
 static void Tracker_Motion_retry(TimerHandle_t xTimer) {
     for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
         // 타이머 핸들이 일치하고, 현재 해당 기기가 실제로 연결되어 있는지 확인
@@ -219,7 +252,6 @@ void Tracker_All_Send(uint8_t cmd, uint8_t sub_cmd)
         // 타이머 핸들이 일치하고, 현재 해당 기기가 실제로 연결되어 있는지 확인
         if (connected_clients[i].is_connected) {
             motion_msg_send(connected_clients[i].conn_handle,cmd,sub_cmd);
-            break; 
         }
     }
 }

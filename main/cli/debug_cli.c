@@ -1,6 +1,7 @@
 #include "debug_cli.h"
 #include "app_config_flash.h"
 #include "ble_tracker_id.h"
+#include "ble_task.h"
 DBG_Resister_t DBG_Resister;
 
 
@@ -124,7 +125,10 @@ BaseType_t prvDebugformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				dump_tracker_all_devices();
 			}
-					
+			else if (!strncmp(ag[1], "conn", 4))
+			{
+				print_connected_clients();
+			}		
 			/* There are more parameters to return after this one. */
 //			pcWriteBuffer[ 0 ] = 0x00;
 			xReturn = pdFALSE;
