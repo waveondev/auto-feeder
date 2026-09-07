@@ -293,7 +293,6 @@ bool VL53L0X_Detect(bool all_state)
 void VL53L0X_Sensing(void)
 {
     gpio_set_level(PIN_TOF0_INT, 1);   
-    vTaskDelay(pdMS_TO_TICKS(2));
     ADC_Sensing();
     vTaskDelay(pdMS_TO_TICKS(1));
     gpio_set_level(PIN_TOF0_INT, 0); 

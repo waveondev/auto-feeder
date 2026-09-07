@@ -8,12 +8,22 @@
 #define MOTION_DATA           0x11
 #define HEALTH_DATA_REQUEST   0x12
 #define HEALTH_DATA_RESPONSE  0x13
+#define OTA_MODE_REQUEST      0x14
+#define OTA_MODE_RESPONSE     0x15
+#define TIME_REQUEST          0x16
+#define TIME_RESPONSE         0x17
+#define FLASH_REQUEST         0x18
+#define FLASH_RESPONSE        0x19
 
 #define MOTION_START_REQUEST  0x20
 #define MOTION_DATA_ACK       0x21
 
-#define OTA_MODE_REQUEST      0x30
-#define OTA_MODE_RESPONSE     0x31
+#define LSM6_DATA_REQUEST     0x30
+#define LSM6_DATA_RESPONSE    0x31
+
+
+#define FACTORY_REQUEST       0xF0
+#define FACTORY_RESPONSE      0xF1
 
 typedef union {
     struct {
@@ -97,7 +107,23 @@ typedef struct {
         uint8_t status;
         uint8_t padding[17];
       } ota_res;
-
+      struct
+      {
+        uint8_t cmd_type;
+        uint8_t status;
+        uint8_t padding[17];
+      } flash_req_res;
+      struct
+      {
+        uint8_t cmd_type;
+        uint8_t padding[18];
+      } time_req;
+      struct
+      {
+        uint8_t cmd_type;
+        uint32_t epoch_sec;
+        uint8_t padding[14];
+      } time_res;
   };
 } Motion_Packet_t;
 #pragma pack(pop)

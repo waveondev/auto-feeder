@@ -165,9 +165,11 @@ typedef struct {
     TimerHandle_t xMotionTimer;
     TimerHandle_t xtimer;
     uint32_t timer_count;
+    uint32_t first_delay_ms;    
     uint16_t conn_handle;
     uint8_t mac_addr[6];
     bool is_connected;
+    
 } client_info_t;
 
 client_info_t connected_clients[CONFIG_BT_NIMBLE_MAX_CONNECTIONS];
@@ -255,7 +257,7 @@ void Tracker_All_Send(uint8_t cmd, uint8_t sub_cmd)
         }
     }
 }
-
+#include "esp_random.h"
 
 static void Tracker_Motion_send(TimerHandle_t xTimer) {
     for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
@@ -264,7 +266,11 @@ static void Tracker_Motion_send(TimerHandle_t xTimer) {
             connected_clients[i].timer_count++;
             uint16_t conn_handle = connected_clients[i].conn_handle;
             app_config_t* app_config = get_app_config();
-            if(connected_clients[i].timer_count == 3)
+            if(connected_clients[i].timer_count == connected_clients[i].first_delay_ms)
+            {
+                motion_msg_send(conn_handle, HEALTH_DATA_REQUEST,1);
+            }
+            else if(connected_clients[i].timer_count == (connected_clients[i].first_delay_ms * 2))
             {
                 motion_msg_send(conn_handle, MOTION_START_REQUEST,1);
             }
@@ -286,6 +292,7 @@ void add_client(uint16_t conn_handle, const uint8_t *mac) {
             connected_clients[i].is_connected = true;
             connected_clients[i].xtimer = xTimerCreate("adv_delay", pdMS_TO_TICKS(1000), pdTRUE, NULL, Tracker_Motion_send);
             connected_clients[i].xMotionTimer = xTimerCreate("motion", pdMS_TO_TICKS(1000), pdTRUE, NULL, Tracker_Motion_retry);
+            connected_clients[i].first_delay_ms = (esp_random() % 20) + 1;              
             xTimerStart(connected_clients[i].xtimer, 0);            
             break;
         }
@@ -810,7 +817,11 @@ static void ble_tx_processing_task(void *pvParameters)
                     // msg.data의 offset 위치부터 send_len 만큼 잘라서 쏘기
                     ble_server_send_notify(msg.conn_handle, &msg.data[offset], send_len);
                     printf("[TX 태스크] %d 바이트 중 %d 바이트 쪼개서 전송 완료 (offset: %d)\n", msg.len, send_len, offset);
-                    
+                    for(int i = 0; i < msg.len; i++)
+                    {
+                        printf("%02X ", msg.data[i]);
+                    }
+                    printf("\n");
                     offset += send_len;
                     
                     // 연속 전송 시 BLE 컨트롤러 큐 오버플로우 방지 (필수)
@@ -845,12 +856,17 @@ static void mac_send_timer_callback(void* arg)
     printf("send %s ", Str);
     ble_send_data_to_queue(NULL, (const uint8_t*)Str, strlen((const char*)Str));
 }
+
+#include <sys/time.h> // gettimeofday(), settimeofday() 함수 선언
+#include <time.h>     // time_t, struct tm, gmtime() 등
+
 void motion_msg_send(uint16_t conn_handle, uint8_t cmd,uint8_t sub_cmd)
 {
     Motion_Packet_t Motion_Packet;
 
     memset(&Motion_Packet,0,sizeof(Motion_Packet));
-        
+    struct timeval tv;
+
     switch(cmd)
     {
         case MOTION_START_REQUEST:
@@ -869,7 +885,12 @@ void motion_msg_send(uint16_t conn_handle, uint8_t cmd,uint8_t sub_cmd)
             Motion_Packet.event_code = cmd;
             Motion_Packet.ota_req.cmd_type = sub_cmd;
         break;   
-
+        case TIME_RESPONSE:
+            #define KST_OFFSET_SEC  (9 * 3600) // 9시간 (32,400초)
+            gettimeofday(&tv, NULL);
+            Motion_Packet.event_code = cmd;
+            Motion_Packet.time_res.epoch_sec = tv.tv_sec + KST_OFFSET_SEC;
+        break;   
         default : 
         return;            
     }

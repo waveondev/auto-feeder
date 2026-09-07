@@ -105,10 +105,21 @@ void CleanMode(void)
         Sliding_CCW(100);
 
 }
+static bool NightMode = false;
+void Night_Mode(bool state)
+{
+    NightMode = state;
+    if(NightMode)
+        LED_Bright_Set(0);  
+    else 
+        LED_Bright_Set(255);  
+}
+
 void Opmode_test_mode(void)
 {
     current_opmode = OP_MODE_TEST;
 }
+
 void Opmode_Set(void)
 {
     app_config_t* app_config = get_app_config();

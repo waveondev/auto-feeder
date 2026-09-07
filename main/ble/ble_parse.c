@@ -148,6 +148,8 @@ void ble_send_encrypted_event(const char* event_type, const char* plain_data) {
     mbedtls_gcm_free(&gcm);
 }
 
+
+
 void BLE_APP_Command(uint8_t* data, uint16_t len)
 {
     char buf[256];
@@ -576,6 +578,9 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                 
                 printf("\n=====================================================\n\n");
                 tracker_mqtt_queue_send(TRACKER_MESSEGE_HEALTH,mac, Motion_Packet,0,NULL);
+        break;
+        case TIME_REQUEST:
+            motion_msg_send(get_conn_handle_by_mac(mac),TIME_RESPONSE,0); 
         break;
         default:
             BLE_APP_Command(data,len);

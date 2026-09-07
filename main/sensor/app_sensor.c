@@ -89,13 +89,10 @@ void Sensor_task(void *pvParameter)
     DBG_Resister_t* DBG_Resister = Debug_Get();
     while (1) {
 
-        #if 1
-        #endif
+
         vTaskDelay(25 / portTICK_PERIOD_MS);
         VL53L0X_Sensing();
-        #if 1
 
-        #endif
         if(DBG_Resister->sens)
         {
             ESP_LOGI(TAG, "IR_OUT0 = %d\r\n",Food_Detected_State()?1:0);

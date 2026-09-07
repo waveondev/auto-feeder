@@ -31,7 +31,7 @@ typedef struct {
     bool status;
 }DISPENSE_Packet_t;
 
-
+void Night_Mode(bool state);
 void Clean_mode_set(void);
 void opmode_task_init(void);
 void Opmode_Set(void);

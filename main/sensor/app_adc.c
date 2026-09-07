@@ -130,12 +130,14 @@ void ADC_Sensing(void)
     adc_continuous_start(adc_handle);
 
     // 2. 아날로그 회로 안정화 및 샘플 수집을 위해 잠깐 대기 (예: 5ms)
-    vTaskDelay(pdMS_TO_TICKS(5));    
+    vTaskDelay(pdMS_TO_TICKS(10));    
     ret = adc_continuous_read(adc_handle,
                             result_buf,
                             sizeof(result_buf),
                             &ret_num,
-                            pdMS_TO_TICKS(10));
+                            pdMS_TO_TICKS(100));
+
+    adc_continuous_stop(adc_handle);                
     DBG_Resister_t* DBG_Resister = Debug_Get();
     if (ret == ESP_OK)
     {
@@ -260,7 +262,7 @@ void ADC_Sensing(void)
                 break;
         } 
     }
-    adc_continuous_stop(adc_handle);
+
     if (ret == ESP_ERR_TIMEOUT) {
         timeout_count++;
         // 연속으로 10번 이상 TIMEOUT이 발생하면 ADC 드라이버가 멈춘 것으로 판단하고 재시작

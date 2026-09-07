@@ -335,6 +335,7 @@ static void LED_task(void *pvParameter)
     vTaskDelay(pdMS_TO_TICKS(5000));
     ESP_LOGI(TAG, "Starting LED_task (Pure Event Driven Mode)");
     DBG_Resister_t *DBG_Resister = Debug_Get();
+    static uint16_t led_status_resister_buf = 0;
     while (1) {
         app_tof_sensor_poll_100ms();
    
@@ -344,6 +345,12 @@ static void LED_task(void *pvParameter)
         }
         else
         {
+            if(LED_brightness_value == 0)
+            {
+                set_rgb_len_no_Breathing(0 ,0, 0, 0); 
+                vTaskDelay(pdMS_TO_TICKS(LED_TASK_DELAY));
+                continue;
+            }
             int button_state = button_press_state();
             if(button_state)
             {
@@ -359,17 +366,23 @@ static void LED_task(void *pvParameter)
     // [우선순위 1] 특수 비트가 하나라도 켜져 있는 상태라면
                 if (led_status_resister != 0) 
                 {
+                    if(led_status_resister_buf != led_status_resister)
+                    {
+                        memset(&Breathing_Setting, 0, sizeof(Breathing_Setting_t));
+                        led_status_resister_buf = led_status_resister;
+                    }
+                        
                     last_op_mode = -1; // 모드 무효화
                     #if 1
                     if(hardware_error_enable() || sense_enable())
                     {
-                        set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
+                        set_rgb_len_no_Breathing(LED_brightness_value,0, 0, 0); 
                     }
                     else 
                     #endif
                     if(motor_error_enable() || food_empty_enable() || food_low_enable())
                     {
-                        set_rgb_len_no_Breathing(LED_BRIGHTNESS_MAX,0, 0, 0); 
+                        set_rgb_len_no_Breathing(LED_brightness_value,0, 0, 0); 
                     }
                     else if(motor_mode_enable())
                     {
@@ -402,6 +415,7 @@ static void LED_task(void *pvParameter)
                 // [우선순위 2] 비트가 다 꺼진 정상 상태라면 op_mode 적용
                 else 
                 {
+                    led_status_resister_buf = 0;
                     if(wifi_conn_enable == true)
                     {
                         wifi_conn_enable = false;
