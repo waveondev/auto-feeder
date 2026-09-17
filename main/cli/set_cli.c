@@ -11,6 +11,10 @@
 #include "isd2360.h"
 #include "app_feed_motor.h"
 #include "app_button.h"
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+
 BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
     const char *pcParameter;
@@ -140,6 +144,23 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				Tracker_All_Send(OTA_MODE_REQUEST,1);
 			}
+			else if (!strncmp(ag[1], "bledata", 7))
+			{
+				uint8_t hex_array[20] = {0};
+				uint8_t index = atoi(ag[2]);
+				int len = strlen(ag[3]) / 2;
+				for (size_t i = 0; i < len; i++) {
+					// %2hhx: 2글자씩 읽어서 uint8_t(1바이트) 16진수 값으로 변환
+					sscanf((const char*)&ag[3][i * 2], "%2hhx", &hex_array[i]);
+				}
+				printf("변환 결과: ");
+				for (size_t i = 0; i < len; i++) {
+					printf("0x%02X ", hex_array[i]);
+				}
+				printf("\n");
+				uint16_t handle = GetHandle(index);
+				ble_send_data_to_queue(&handle, (uint8_t*)hex_array,sizeof(hex_array));
+			}	
 			else if (!strncmp(ag[1], "motion", 6))
 			{
 				Tracker_All_Send(MOTION_START_REQUEST,1);

@@ -455,6 +455,18 @@ void BLE_APP_Command(uint8_t* data, uint16_t len)
         printf("저장 완료\n");
     }
 }
+
+typedef struct 
+{
+  int16_t ax; 
+  int16_t ay;
+  int16_t az;
+  int16_t gx; 
+  int16_t gy;
+  int16_t gz;
+  uint8_t mlc[4];
+}Sensor_RawData_t;
+
 static uint32_t total_count = 0;
 static uint32_t input_count = 0;
 
@@ -581,6 +593,21 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
         break;
         case TIME_REQUEST:
             motion_msg_send(get_conn_handle_by_mac(mac),TIME_RESPONSE,0); 
+        break;
+        case LSM6_DATA_RESPONSE:
+                printf("--- Sensor Raw Data ---\n");
+                Sensor_RawData_t* sensor = (Sensor_RawData_t*)Motion_Packet->lsm6_data_req_res.data;
+                // 가속도 (Accel) 출력
+                printf("Accel  : AX=%6d, AY=%6d, AZ=%6d\n",sensor->ax, sensor->ay, sensor->az);
+                
+                // 자이로 (Gyro) 출력
+                printf("Gyro   : GX=%6d, GY=%6d, GZ=%6d\n", sensor->gx, sensor->gy, sensor->gz);
+                
+                // MLC 데이터 10진수 및 16진수 출력
+                printf("MLC    : [%d, %d, %d, %d] (Hex: 0x%02X 0x%02X 0x%02X 0x%02X)\n",
+                    sensor->mlc[0], sensor->mlc[1], sensor->mlc[2], sensor->mlc[3],
+                    sensor->mlc[0], sensor->mlc[1], sensor->mlc[2], sensor->mlc[3]);
+                printf("-----------------------\n");
         break;
         default:
             BLE_APP_Command(data,len);

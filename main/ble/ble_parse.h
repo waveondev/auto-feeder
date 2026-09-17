@@ -45,6 +45,7 @@ typedef union {
     uint8_t byte;
 } fault_code;
 
+
 #pragma pack(push, 1)
 typedef struct {
   uint8_t event_code;
@@ -54,7 +55,7 @@ typedef struct {
       {
         uint8_t interval;
         uint16_t total_points;
-        uint16_t padding[5];
+        uint16_t padding[8];
       } motion_req;
       struct
       {
@@ -74,6 +75,7 @@ typedef struct {
         uint8_t req_type;
         uint16_t padding[9];
       } health_data_req;
+
       struct
       {
         uint32_t uptime_sec;
@@ -86,6 +88,14 @@ typedef struct {
         fault_code fault_flag;
         uint16_t padding[4];
       } health_data_res;
+      struct
+      {
+        uint8_t read_write;
+        uint8_t start_address;
+        uint8_t data_len; 
+        uint8_t data[16];
+      } lsm6_data_req_res;
+
       struct
       {
         uint8_t req_type;
@@ -109,10 +119,38 @@ typedef struct {
       } ota_res;
       struct
       {
-        uint8_t cmd_type;
-        uint8_t status;
-        uint8_t padding[17];
-      } flash_req_res;
+        uint8_t cmd_type; // 1byte (독립된 cmd_type 위치 확보)
+        union
+        {
+          struct
+          {
+            uint8_t status;
+            uint16_t duration;
+            uint8_t padding[15];
+          } flash_req_duration;
+
+          struct
+          {
+            uint8_t status;
+            int16_t txpower;
+            uint8_t padding[15];
+          } flash_req_txpower;
+
+          struct
+          {
+            uint8_t status;
+            uint16_t interval;
+            uint8_t padding[15];
+          } flash_req_beacon_interval;
+
+          struct
+          {
+            uint8_t status;
+            uint8_t name[17];
+          } flash_req_name;
+        };
+      } flash_packet;
+
       struct
       {
         uint8_t cmd_type;
