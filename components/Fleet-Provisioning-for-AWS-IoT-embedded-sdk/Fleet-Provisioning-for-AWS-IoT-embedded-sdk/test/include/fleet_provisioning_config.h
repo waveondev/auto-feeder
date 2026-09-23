@@ -31,7 +31,7 @@
 #define FLEET_PROVISIONING_CONFIG_H_
 
 #include <stdio.h>
-
+#include "esp_log.h"
 #ifdef DISABLE_LOGGING
     #ifndef LogError
         #define LogError( message )
@@ -49,13 +49,13 @@
     #endif
 
 #else /* ! DISABLE_LOGGING */
-    #define LogError( message )    printf( "Error: " ); printf message; printf( "\n" )
+    #define LogError( message )    ESP_LOGE(__FILE__,message)
 
-    #define LogWarn( message )     printf( "Warn: " ); printf message; printf( "\n" )
+    #define LogWarn( message )     ESP_LOGW(__FILE__,message)
 
-    #define LogInfo( message )     printf( "Info: " ); printf message; printf( "\n" )
+    #define LogInfo( message )     ESP_LOGI(__FILE__,message)
 
-    #define LogDebug( message )    printf( "Debug: " ); printf message; printf( "\n" )
+    #define LogDebug( message )    ESP_LOGD(__FILE__,message)
 #endif /* DISABLE_LOGGING */
 
 #endif /* FLEET_PROVISIONING_CONFIG_H_ */

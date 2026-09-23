@@ -15,8 +15,7 @@ typedef struct{
     float hx1_scale;                 // counts per gram
     int32_t hx1_offset;              // tare offset
     uint32_t case_raw_data;
-    uint32_t tof_sense_threshold_l;
-    uint32_t tof_sense_threshold_r;
+    uint32_t tof_sense_threshold;
     uint32_t motion_data_time;
     uint32_t dispense_duration; // 토출시간 (ms)
     uint32_t dispense_amount_g;     // 토출량 (g)    

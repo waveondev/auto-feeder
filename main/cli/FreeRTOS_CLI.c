@@ -307,7 +307,7 @@ BaseType_t FreeRTOS_CLIRegisterCommand2(const char *pcCommandString )
 	}
 	for(uint8_t a=0;CommandList[a] != NULL;a++)
 	{
-		//printf("%s [%d]\r\n",CommandList[a]->pcCommand,a);
+		//ESP_LOGI(TAG,"%s [%d]\r\n",CommandList[a]->pcCommand,a);
 		if(strncmp(CommandList[a]->pcCommand,pcCommandString,strlen(CommandList[a]->pcCommand)) == 0)
 		{
 			Command = CommandList[a];
@@ -342,7 +342,7 @@ BaseType_t FreeRTOS_CLIRegisterCommand2(const char *pcCommandString )
 		taskEXIT_CRITICAL(&xKernelLock);
 
 		xReturn = pdPASS;
-		//printf("%s = %p , size %d \r\n",pxNewListItem->pxCommandLineDefinition->pcCommand,pxLastCommandInList,sizeof( CLI_Definition_List_Item_t ));
+		//ESP_LOGI(TAG,"%s = %p , size %d \r\n",pxNewListItem->pxCommandLineDefinition->pcCommand,pxLastCommandInList,sizeof( CLI_Definition_List_Item_t ));
 	}
 
 	return xReturn;
@@ -382,7 +382,7 @@ BaseType_t FreeRTOS_CLIDeleteCommand( const char *pcCommandString )
 			{
 				pxFirstCommandInList->pxNext = pxNewListItem->pxNext;
 			}
-			//printf("del %p , size %d \r\n",pxNewListItem,sizeof( CLI_Definition_List_Item_t ));
+			//ESP_LOGI(TAG,"del %p , size %d \r\n",pxNewListItem,sizeof( CLI_Definition_List_Item_t ));
 			pxNewListItem->pxNext = NULL;
 			xReturn = pdPASS;
 			vPortFree (pxNewListItem);
@@ -392,7 +392,7 @@ BaseType_t FreeRTOS_CLIDeleteCommand( const char *pcCommandString )
 			pxFirstCommandInList = pxNewListItem;
 	}
 	pxLastCommandInList = pxFirstCommandInList;
-	//printf("last = %p , size %d \r\n",pxLastCommandInList,sizeof( CLI_Definition_List_Item_t ));
+	//ESP_LOGI(TAG,"last = %p , size %d \r\n",pxLastCommandInList,sizeof( CLI_Definition_List_Item_t ));
 	return xReturn;
 }
 
@@ -551,7 +551,7 @@ void vOutputString(const char* func, uint32_t len, uint8_t* data)
 {
 	for(uint32_t i = 0; i < len; i++)
     {
-        putchar(data[i]); // 혹은 printf("%c", data[i]);
+        putchar(data[i]); // 혹은 ESP_LOGI(TAG,"%c", data[i]);
     }
 }
 /*-----------------------------------------------------------*/
@@ -745,12 +745,12 @@ static BaseType_t prvmotorCommand( char *pcWriteBuffer, size_t xWriteBufferLen, 
 				case '<':
 					if(index)
 						index--;
-					printf("index = %d \n",index);
+					ESP_LOGI(TAG,"index = %d \n",index);
 				break;
 				case '>':
 					if(index < 100)
 						index++;
-					printf("index = %d \n",index);						
+					ESP_LOGI(TAG,"index = %d \n",index);						
 				break;
 				case 'a':
 					Feeder_CW();
@@ -796,8 +796,8 @@ static void vTaskListCustom(void)
         uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, NULL);
 
         // 헤더 출력 (요청하신 양식 오른쪽에 Core 추가)
-        printf("\nTask            State  Priority  Stack    #    Core\n");
-        printf("====================================================\n");
+        ESP_LOGI(TAG,"\nTask            State  Priority  Stack    #    Core\n");
+        ESP_LOGI(TAG,"====================================================\n");
 
         for (UBaseType_t x = 0; x < uxArraySize; x++) {
             // 상태(State) 문자 변환
@@ -822,7 +822,7 @@ static void vTaskListCustom(void)
 			}
 
             // 기존 vTaskList와 완전히 동일한 너비와 정렬을 유지하며 출력
-            printf("%-15s  %c       %u         %-7u  %-3u  %s\n",
+            ESP_LOGI(TAG,"%-15s  %c       %u         %-7u  %-3u  %s\n",
                    pxTaskStatusArray[x].pcTaskName,
                    state_char,
                    (unsigned int)pxTaskStatusArray[x].uxCurrentPriority,
@@ -830,7 +830,7 @@ static void vTaskListCustom(void)
                    (unsigned int)pxTaskStatusArray[x].xTaskNumber,
                    core_str);
         }
-        printf("====================================================\n\n");
+        ESP_LOGI(TAG,"====================================================\n\n");
 
         // 메모리 해제
         free(pxTaskStatusArray);
@@ -1041,7 +1041,7 @@ void vRegisterDefaultCLICommands(uint8_t level)
 	Command_Level = level;
 	for(uint8_t a=0;CommandList[a] != NULL;a++)
 	{
-		//printf("%s [%d]\r\n",CommandList[a]->pcCommand,a);
+		//ESP_LOGI(TAG,"%s [%d]\r\n",CommandList[a]->pcCommand,a);
 		if(CommandList[a]->level <= Command_Level)
 		{
 			FreeRTOS_CLIRegisterCommand2(CommandList[a]->pcCommand);
@@ -1199,7 +1199,7 @@ static void console_main(void *argument)
 
 void APP_Printf(char c)
 {
-	printf("%c",c);
+	ESP_LOGI(TAG,"%c",c);
 	fflush(stdout);
 }
 void APP_String_printf(const char *format, ...)

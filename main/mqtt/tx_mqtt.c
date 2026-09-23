@@ -21,7 +21,7 @@ static uint16_t feeder_fault_code_send = 0;
 static uint16_t feeder_fault_code_buf = 0;
 #define FEEDER_MAJOR 1
 #define FEEDER_MINOR 1
-#define FEEDER_PATCH 3
+#define FEEDER_PATCH 1
 void feeder_fault_enable(uint16_t status, bool count)
 {
     feeder_fault_code |= status;
@@ -740,7 +740,7 @@ void Send_cJSON_Messege_for_tracker(tracker_mqtt_packet_t* tracker_mqtt_packet)
     if(packet->event_code == MOTION_START_RESPONSE)
     {
         memcpy(&motion_res,&tracker_mqtt_packet->packet,sizeof(Motion_Packet_t));
-        printf("total = %d interval = %d ",motion_res.motion_req.total_points,motion_res.motion_req.interval);
+        ESP_LOGI(TAG,"total = %d interval = %d ",motion_res.motion_req.total_points,motion_res.motion_req.interval);
         return;
     }
     cJSON* root = Get_cJSON_Header(cmd);

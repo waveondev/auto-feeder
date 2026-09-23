@@ -226,7 +226,7 @@ static void slidmotor_boost_task(void *pvParameters)
             }
             else
             {
-                if(GetSlid_ADC() > 500)
+                if(GetSlid_ADC() > 250)
                 {
                     slid_stuck_count++;
                     set_slid_motor_speed_percent(0, true);

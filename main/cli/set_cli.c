@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-
+#define TAG __FUNCTION__
 BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
     const char *pcParameter;
@@ -153,11 +153,10 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					// %2hhx: 2글자씩 읽어서 uint8_t(1바이트) 16진수 값으로 변환
 					sscanf((const char*)&ag[3][i * 2], "%2hhx", &hex_array[i]);
 				}
-				printf("변환 결과: ");
-				for (size_t i = 0; i < len; i++) {
-					printf("0x%02X ", hex_array[i]);
-				}
-				printf("\n");
+				ESP_LOGI(TAG,"변환 결과: ");
+				ESP_LOG_BUFFER_HEX(TAG, hex_array, len);
+
+				ESP_LOGI(TAG,"\n");
 				uint16_t handle = GetHandle(index);
 				ble_send_data_to_queue(&handle, (uint8_t*)hex_array,sizeof(hex_array));
 			}	
@@ -194,9 +193,9 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 					app_config->hx1_scale = 1000.0f;
 					app_config->hx1_offset = 0;
 					app_config->case_raw_data = 0;
-					app_config->tof_sense_threshold_l = 250;
+					app_config->tof_sense_threshold = 5;
 					app_config->motion_data_time = 1800;
-					app_config->dispense_duration = 240;
+					app_config->dispense_duration = 360;
 					app_config->dispense_amount_g = 50;
 					sprintf(app_config->env_mode,"dev");
 					if(atoi(ag[3]))
@@ -239,7 +238,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			}		
 			else if (!strncmp(ag[1], "int", 3))
 			{
-				gpio_set_level(PIN_TOF0_INT, atoi(ag[2])?1:0);
+				gpio_set_level(IR_ENABLE, atoi(ag[2])?1:0);
 			}		
 			else if (!strncmp(ag[1], "lock", 3))
 			{

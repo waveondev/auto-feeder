@@ -21,9 +21,9 @@ app_config_t app_config =
     .hx1_scale = 1000.0f,
     .hx1_offset = 0,
     .case_raw_data = 0,
-    .tof_sense_threshold_l = 250,
+    .tof_sense_threshold = 5,
     .motion_data_time = 1800,
-    .dispense_duration = 240,// 토출시간 (분)
+    .dispense_duration = 360,// 토출시간 (분)
     .dispense_amount_g = 50,// 토출량 (g)
     .env_mode = "dev"
 };
@@ -99,7 +99,7 @@ void dump_all_configurations(void)
     ESP_LOGI(TAG, "  - HX1 Tare Offset       : %ld", app_config.hx1_offset);
     ESP_LOGI(TAG, "  - Case Raw Data         : %ld", app_config.case_raw_data);
 
-    ESP_LOGI(TAG, "  - ToF Sense Thr (L)     : %ld", app_config.tof_sense_threshold_l);
+    ESP_LOGI(TAG, "  - tof_sense_threshold (L)     : %ld", app_config.tof_sense_threshold);
     ESP_LOGI(TAG, "  - Motion Data Time      : %ld", app_config.motion_data_time);
 
     ESP_LOGI(TAG, "  - dispense_duration     : %ld", app_config.dispense_duration);

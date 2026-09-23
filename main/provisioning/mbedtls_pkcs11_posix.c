@@ -285,7 +285,7 @@ static void mbedtlsDebugPrint( void * ctx,
     ( void ) line;
 
     /* Send the debug string to the portable logger. */
-    printf( "mbedTLS: |%d| %s", level, pStr );
+    ESP_LOGI("mbedtlsDebugPrint", "mbedTLS: |%d| %s", level, pStr );
 }
 
 /*-----------------------------------------------------------*/

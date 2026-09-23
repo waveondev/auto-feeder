@@ -213,7 +213,7 @@ bool mqtt_subscribe_init(void)
         ESP_LOGI(TAG, "=== %d. 메모리 실패 === %s", topic_count, sub_topic);
     }
 
-    snprintf(sub_topic,sizeof(sub_topic),AWS_RX_TOPIC_JOBS_GET_ACCEPTED,dynamicMacStr);
+    snprintf(sub_topic,sizeof(sub_topic),AWS_RX_TOPIC_SHADOW_GET_ACCEPTED,dynamicMacStr);
 
     subTopic = topic_copy(sub_topic);
     if(subTopic != NULL)

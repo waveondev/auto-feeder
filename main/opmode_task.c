@@ -30,8 +30,8 @@ static esp_timer_handle_t Slid_weight_timer = NULL;
 static esp_timer_handle_t food_dispense_timer = NULL;
 static esp_timer_handle_t food_feed_timer = NULL;
 static esp_timer_handle_t food_empty_timer = NULL;
-void Slid_Close_Timer_Set(bool state,uint32_t timeout,int line);
-void Slid_weight_Timer_Set(bool state,uint32_t timeout);
+void Slid_Close_Timer_Set(bool state,uint64_t timeout,int line);
+void Slid_weight_Timer_Set(bool state,uint64_t timeout);
 // 1초 뒤 타이머가 만료되면 실행될 콜백 함수
     // 2) US 상수 매크로 형태 (60초 = 60 * 1초)
 #define SEC_TO_US(sec) ((uint64_t)(sec) * 1000000ULL)
@@ -42,8 +42,8 @@ static feed_mode_e feeder_mode_flag = FEED_MODE_NONE;
 static bool diff_enable = false;
 #define MOTOR_DEFAULT_TIME_SEC 20
 #define FEED_DEFAULT_TIME_MIN 5
-void FoodDispense_Timer_Set(bool state,uint32_t timeout);
-void Foodempty_Timer_Set(bool state,uint32_t timeout);
+void FoodDispense_Timer_Set(bool state,uint64_t timeout);
+void Foodempty_Timer_Set(bool state,uint64_t timeout);
 void set_mode_state(void);
 typedef enum{
     SLID_IN = 0,
@@ -274,7 +274,7 @@ static void food_empty_callback(void* arg)
     Foodempty_Timer_Set(true, SEC_TO_US(1));
 }
 
-void Slid_Close_Timer_Set(bool state,uint32_t timeout,int line)
+void Slid_Close_Timer_Set(bool state,uint64_t timeout,int line)
 {
     if (esp_timer_is_active(Slid_closed_timer)) {
         esp_timer_stop(Slid_closed_timer);
@@ -288,7 +288,7 @@ void Slid_Close_Timer_Set(bool state,uint32_t timeout,int line)
 }
 
 #if 1
-void Slid_weight_Timer_Set(bool state,uint32_t timeout)
+void Slid_weight_Timer_Set(bool state,uint64_t timeout)
 {
     if (esp_timer_is_active(Slid_weight_timer)) {
         esp_timer_stop(Slid_weight_timer);
@@ -304,7 +304,7 @@ void Slid_weight_Timer_Set(bool state,uint32_t timeout)
 
 #endif
 
-void FoodDispense_Timer_Set(bool state,uint32_t timeout)
+void FoodDispense_Timer_Set(bool state,uint64_t timeout)
 {
     #if 1
     if (esp_timer_is_active(food_dispense_timer)) {
@@ -313,14 +313,14 @@ void FoodDispense_Timer_Set(bool state,uint32_t timeout)
     if(state)
     {
         esp_timer_start_once(food_dispense_timer, (timeout));
-        ESP_LOGI(TAG, "FoodDispense set"); 
+        ESP_LOGI(TAG, "FoodDispense set %lld" ,timeout); 
     }
     else
         ESP_LOGI(TAG, "FoodDispense reset"); 
     #endif
 }
 
-void FoodFeed_Timer_Set(bool state,uint32_t timeout)
+void FoodFeed_Timer_Set(bool state,uint64_t timeout)
 {
     #if 1
     if (esp_timer_is_active(food_feed_timer)) {
@@ -335,7 +335,7 @@ void FoodFeed_Timer_Set(bool state,uint32_t timeout)
         ESP_LOGI(TAG, "foodFeed reset"); 
     #endif
 }
-void Foodempty_Timer_Set(bool state,uint32_t timeout)
+void Foodempty_Timer_Set(bool state,uint64_t timeout)
 {
     #if 1
     if (esp_timer_is_active(food_empty_timer)) {
@@ -362,15 +362,18 @@ bool feeder_mode_init(bool status, uint8_t mode)
         ESP_LOGI(TAG,"STATUS TRUE");
         if(VL53L0X_Detect(false))
         {
+            ESP_LOGE(TAG,"feeder_mode_init 1");
             return false;
         }
         if(food_empty_enable())
         {
+            ESP_LOGE(TAG,"feeder_mode_init 2");
             feeder_fault_enable(FOOD_EMPTY,true);
             return false;
         }
         if(start_weight != 0)
         {
+            ESP_LOGE(TAG,"feeder_mode_init 3");
             Slid_Close_Timer_Set(true, SEC_TO_US(1),__LINE__);
             return false;
         }    
@@ -439,7 +442,7 @@ void Smart_Feeder(void)
 {
     static uint32_t smart_timer_target = 0; // 각 상태별 마감 시한 틱 저장
 
-    bool sensor_detected = VL53L0X_Detect(true);
+    bool sensor_detected = VL53L0X_Detect(false);
     uint32_t current_tick = xTaskGetTickCount();
 
     switch (smart_state)

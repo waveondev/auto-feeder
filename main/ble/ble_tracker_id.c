@@ -43,49 +43,46 @@ Tracker_Device_t* Get_Tracker_Device(uint8_t* addr)
 void dump_tracker_device_info(const char* label, const Tracker_Device_t* dev)
 {
     if (dev == NULL) {
-        printf("%s: [ NULL ]\n", label);
+        ESP_LOGI(TAG,"%s: [ NULL ]\n", label);
         return;
     }
     
-    printf("%s\n", label);
+    ESP_LOGI(TAG,"%s\n", label);
   
-    printf(" Device_ID       : %s\n", dev->Device_ID);
+    ESP_LOGI(TAG," Device_ID       : %s\n", dev->Device_ID);
 
-    printf(" total_Device_Time : %ld\n", dev->total_Device_Time);
-    printf(" Device_Time       : %ld\n", dev->Device_Time);
-    printf(" Disable_Time      : %ld\n", dev->Disable_Time);
-    printf(" diff_Time         : %ld\n", dev->diff_Time);
-    printf(" Enable            : %ld\n", dev->Enable);
-    printf(" Water_intake      : %ld\n", dev->Water_intake);
+    ESP_LOGI(TAG," total_Device_Time : %ld\n", dev->total_Device_Time);
+    ESP_LOGI(TAG," Device_Time       : %ld\n", dev->Device_Time);
+    ESP_LOGI(TAG," Disable_Time      : %ld\n", dev->Disable_Time);
+    ESP_LOGI(TAG," diff_Time         : %ld\n", dev->diff_Time);
+    ESP_LOGI(TAG," Enable            : %ld\n", dev->Enable);
+    ESP_LOGI(TAG," Water_intake      : %ld\n", dev->Water_intake);
 
-    printf(" ---- dev_info ----\n");
+    ESP_LOGI(TAG," ---- dev_info ----\n");
 
-    printf(" addr             : ");
-    for (int i = 0; i < 6; i++)
-    {
-        printf("%02X", dev->dev_info.addr[i]);
-        if (i < 5)
-            printf(":");
-    }
-    printf("\n");
+    ESP_LOGI(TAG," addr             : ");
 
-    printf(" name             : %s\n", dev->dev_info.name);
-    printf(" rssi             : %d\n", dev->dev_info.rssi);
+    ESP_LOG_BUFFER_HEXDUMP(TAG, dev->dev_info.addr, sizeof(dev->dev_info.addr), ESP_LOG_INFO);
 
-    printf("-----------------------------\n");
+    ESP_LOGI(TAG,"\n");
+
+    ESP_LOGI(TAG," name             : %s\n", dev->dev_info.name);
+    ESP_LOGI(TAG," rssi             : %d\n", dev->dev_info.rssi);
+
+    ESP_LOGI(TAG,"-----------------------------\n");
 }
 
 // 2. 전체 Tracker_Device 배열 및 UNKNOWN 객체를 덤프하는 함수
 void dump_tracker_all_devices(void)
 {
-    printf("\n==================== TRACKER DEVICE DUMP START ====================\n");
+    ESP_LOGI(TAG,"\n==================== TRACKER DEVICE DUMP START ====================\n");
     
     // 2-1. Tracker_UNKNOWN 구조체 덤프
     dump_tracker_device_info("[ Tracker_UNKNOWN Object ]", &Tracker_UNKNOWN);
-    printf("-------------------------------------------------------------------\n");
+    ESP_LOGI(TAG,"-------------------------------------------------------------------\n");
 
     // 2-2. Tracker_Device 포인터 배열 덤프
-    printf("[ Tracker_Device Array (Max: %d) ]\n", TRACKER_DEVICE_MAX);
+    ESP_LOGI(TAG,"[ Tracker_Device Array (Max: %d) ]\n", TRACKER_DEVICE_MAX);
     
     int active_count = 0;
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
@@ -98,10 +95,10 @@ void dump_tracker_all_devices(void)
     }
     
     if (active_count == 0) {
-        printf("  (배열이 비어있습니다. 등록된 디바이스가 없습니다.)\n");
+        ESP_LOGI(TAG,"  (배열이 비어있습니다. 등록된 디바이스가 없습니다.)\n");
     }
 
-    printf("===================== TRACKER DEVICE DUMP END =====================\n\n");
+    ESP_LOGI(TAG,"===================== TRACKER DEVICE DUMP END =====================\n\n");
 }
 void Tracker_intake_clear(void)
 {
@@ -134,9 +131,9 @@ void Tracker_waterintake_end(uint32_t Weight)
     }
 
 
-    printf("\n================= 물 분배 정산 결과 =================\n");
-    printf("총 마신 물 (Weight): %ld ml | 총 기여 시간: %ld ms\n", Weight, total_time_sum);
-    printf("-----------------------------------------------------\n");
+    ESP_LOGI(TAG,"\n================= 물 분배 정산 결과 =================\n");
+    ESP_LOGI(TAG,"총 마신 물 (Weight): %ld ml | 총 기여 시간: %ld ms\n", Weight, total_time_sum);
+    ESP_LOGI(TAG,"-----------------------------------------------------\n");
 
     // 3. 오직 diff_Time 비율로만 물을 쪼개고, 계산 끝난 diff_Time은 0으로 클리어합니다.
     for (int i = 0; i < TRACKER_DEVICE_MAX; i++) {
@@ -148,14 +145,14 @@ void Tracker_waterintake_end(uint32_t Weight)
             // [필요시 각 구조체 누적용 변수에 더해주기]
             // Tracker_Device[i]->total_Weight += allocated_water;
 
-            printf("[%s] 마신 시간(diff): %ld ms | 분배된 물: %ld ml\n", 
+            ESP_LOGI(TAG,"[%s] 마신 시간(diff): %ld ms | 분배된 물: %ld ml\n", 
                    Tracker_Device[i]->Device_ID, Tracker_Device[i]->diff_Time, allocated_water);
             Tracker_Device[i]->Water_intake += allocated_water;
             // 사용이 끝났으므로 다음 턴을 위해 클리어
             Tracker_Device[i]->diff_Time = 0;
         }
     }
-    printf("=====================================================\n");
+    ESP_LOGI(TAG,"=====================================================\n");
 }
 void Tracker_Device_disable(int i)
 {
@@ -176,7 +173,7 @@ bool Tracker_device_time_add(int i)
         if (Tracker_Device[i]->Enable) {
 
             Tracker_Device[i]->Device_Time += 100;
-            //printf("[%s] total time %ld \n", Tracker_Device[i]->Device_ID, Tracker_Device[i]->Device_Time);
+            //ESP_LOGI(TAG,"[%s] total time %ld \n", Tracker_Device[i]->Device_ID, Tracker_Device[i]->Device_Time);
             ret = true;
         }
     }
@@ -211,7 +208,7 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
 
     // 3. 🚨 루프를 끝까지 돌았는데도 빈자리가 없다면 (target_index가 여전히 -1이면) return
     if (target_index == -1) {
-        printf("[에러] 장치 생성 실패: 저장 공간이 가득 찼습니다! (MAX: %d)\n", TRACKER_DEVICE_MAX);
+        ESP_LOGI(TAG,"[에러] 장치 생성 실패: 저장 공간이 가득 찼습니다! (MAX: %d)\n", TRACKER_DEVICE_MAX);
         return; 
     }
 
@@ -237,7 +234,7 @@ void Tracker_In_ID(dev_info_t* dev_info, char* Tracker_ID)
     p_dev->Enable = 1;
     // 4. 전역 배열에 등록
     Tracker_Device[target_index] = p_dev;
-    printf("장치 [%s] 생성 완료 \n", p_dev->Device_ID);
+    ESP_LOGI(TAG,"장치 [%s] 생성 완료 \n", p_dev->Device_ID);
 }
 
 
@@ -279,7 +276,7 @@ void vTrackerCaptureTask(void *pvParameters)
     // 현재 틱 카운트로 초기화 (정밀한 주기 유지를 위함)
     xLastWakeTime = xTaskGetTickCount();
 
-    printf("[태스크] tracker_capture 태스크가 시작되었습니다. (주기: 100ms)\n");
+    ESP_LOGI(TAG,"[태스크] tracker_capture 태스크가 시작되었습니다. (주기: 100ms)\n");
     for (;;)
     {
 
