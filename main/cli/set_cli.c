@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include "app_nvs.h"
 #define TAG __FUNCTION__
 BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen, const char *pcCommandString )
 {
@@ -177,35 +178,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 				}	
 				if (!strncmp(ag[2], "app", 3))
 				{
-					float hx1_scale_buf;
-					int32_t hx1_offset_buf;
-					uint32_t case_raw_data_buf;
-					hx1_scale_buf = app_config->hx1_scale;
-					hx1_offset_buf = app_config->hx1_offset;
-					case_raw_data_buf = app_config->case_raw_data;
-					memset(app_config, 0,sizeof(app_config_t));
-					app_config->op_mode = FEED_MODE_SCHEDULED_PORTION;
-					app_config->sliding_close_mode = 0;
-					app_config->motor_current_limit = 1200;
-					app_config->motor_stuck_retry_count = 3;
-					app_config->food_low_limit = 10;
-					app_config->gate_way_rssi_th = -80;
-					app_config->hx1_scale = 1000.0f;
-					app_config->hx1_offset = 0;
-					app_config->case_raw_data = 0;
-					app_config->tof_sense_threshold = 5;
-					app_config->motion_data_time = 1800;
-					app_config->dispense_duration = 360;
-					app_config->dispense_amount_g = 50;
-					sprintf(app_config->env_mode,"dev");
-					if(atoi(ag[3]))
-					{
-						app_config->hx1_scale = hx1_scale_buf;
-						app_config->hx1_offset = hx1_offset_buf;
-						app_config->case_raw_data = case_raw_data_buf;
-					}
-
-					app_nvs_save_set();
+					facto_set(atoi(ag[3])?true:false);
 				}										
 			}	
 			else if (!strncmp(ag[1], "acuum", 5))

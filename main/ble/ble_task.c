@@ -17,12 +17,12 @@
 #include "services/gatt/ble_svc_gatt.h"
 #include "app_config_flash.h"
 #include "ble_parse.h"
-#include "motion_task.h"
+#include "setting_cmd.h"
 #include "ble_tracker_id.h"
 #include "opmode_task.h"
 #include "device_config.h"
+#include "aws_iot_task.h"
 static const char *TAG = __FILE__;
-
 
 #define MY_UUID128_BASE(XX, YY) \
     BLE_UUID128_DECLARE(0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, \
@@ -54,7 +54,6 @@ static QueueHandle_t ble_tx_queue = NULL; // 이름을 수신용(rx)에서 송�
 
 uint16_t g_ble_max_payload = 20; // ble로 최대 보낼 수 있는 Length 저장
 #define BLE_TRX_TASK_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
-
 // NimBLE 예제에 정의된 주소 출력 함수
 static void print_addr(const void *addr)
 {
@@ -86,12 +85,12 @@ static void ble_spp_client_scan(void)
 
     memset(&disc_params, 0, sizeof(disc_params));
     disc_params.filter_duplicates = 0; 
-    disc_params.passive = 1;           // Active 스캔 필수 (이름 요청용)
+    disc_params.passive = 0;           // Active 스캔 필수 (이름 요청용)
 
     // 🔴 [수정] 500ms 비콘 스캔을 위한 타이밍 최적화
     // interval과 window를 같게 설정하면 ESP32가 쉬지 않고 100% 확률로 계속 스캔 대기를 합니다.
-    disc_params.itvl = 160;            // 스캔 주기 (단위: 0.625ms, 즉 250ms)
-    disc_params.window = 160;          // 스캔 윈도우 (단위: 0.625ms, 즉 250ms) -> 100% 듀티 사이클
+    disc_params.itvl = 400;            // 스캔 주기 (단위: 0.625ms, 즉 250ms)
+    disc_params.window = 400;          // 스캔 윈도우 (단위: 0.625ms, 즉 250ms) -> 100% 듀티 사이클
 
     rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &disc_params, ble_spp_server_gap_event, NULL);
     if (rc != 0) {
@@ -104,7 +103,21 @@ static void ble_spp_server_advertise(void)
     struct ble_hs_adv_fields fields;
     struct ble_hs_adv_fields rsp_fields;
     int rc;
+    uint8_t mfg_data[7];
 
+    rc = ble_gap_adv_stop();
+    if (rc != 0) {
+        ESP_LOGD(TAG, "adv_stop rc=%d", rc);
+    }
+
+    memset(mfg_data,0,sizeof(mfg_data));
+    mfg_data[0] = 0x31;
+    mfg_data[1] = 0x46;
+    if(aws_connected_state())
+    {
+        mfg_data[2] |= 0x01;
+    }
+    
     // Advertising packet
     memset(&fields, 0, sizeof fields);
 
@@ -112,10 +125,7 @@ static void ble_spp_server_advertise(void)
         BLE_HS_ADV_F_DISC_GEN |
         BLE_HS_ADV_F_BREDR_UNSUP;
 
-    // ⭐ NUS 서비스 UUID 광고
-    fields.uuids128 = &nus_svc_uuid;
-    fields.num_uuids128 = 1;
-    fields.uuids128_is_complete = 1;
+    const char *name = ble_svc_gap_device_name();
 
     rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
@@ -126,7 +136,10 @@ static void ble_spp_server_advertise(void)
     // Scan Response packet
     memset(&rsp_fields, 0, sizeof rsp_fields);
 
-    const char *name = ble_svc_gap_device_name();
+
+    /* Manufacturer Specific Data */
+    rsp_fields.mfg_data = mfg_data;
+    rsp_fields.mfg_data_len = sizeof(mfg_data);
 
     rsp_fields.name = (uint8_t *)name;
     rsp_fields.name_len = strlen(name);
@@ -135,9 +148,9 @@ static void ble_spp_server_advertise(void)
 
     rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
     if (rc != 0) {
+        printf("ble_gap_adv_set_fields failed: %d\n", rc);
         return;
     }
-
 
     memset(&adv_params, 0, sizeof adv_params);
 
@@ -145,7 +158,7 @@ static void ble_spp_server_advertise(void)
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
     adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(40);
     adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(20);
-
+    adv_params.filter_policy = BLE_HCI_ADV_FILT_NONE;
     rc = ble_gap_adv_start(
         own_addr_type,
         NULL,
@@ -154,10 +167,6 @@ static void ble_spp_server_advertise(void)
         ble_spp_server_gap_event,
         NULL
     );
-    if (rc != 0) {
-        // 에러 코드 출력 확인용
-        ESP_LOGE("ADV", "Advertising start failed: rc=%d", rc);
-    }
 }
 
 
@@ -170,7 +179,7 @@ typedef struct {
     uint16_t conn_handle;
     uint8_t mac_addr[6];
     bool is_connected;
-    
+
 } client_info_t;
 
 client_info_t connected_clients[CONFIG_BT_NIMBLE_MAX_CONNECTIONS];
@@ -210,7 +219,6 @@ void print_connected_clients(void)
         }
     }
 }
-
 static void Tracker_Motion_retry(TimerHandle_t xTimer) {
     for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
         // 타이머 핸들이 일치하고, 현재 해당 기기가 실제로 연결되어 있는지 확인
@@ -275,6 +283,7 @@ static void Tracker_Motion_send(TimerHandle_t xTimer) {
             connected_clients[i].timer_count++;
             uint16_t conn_handle = connected_clients[i].conn_handle;
             app_config_t* app_config = get_app_config();
+       
             if(connected_clients[i].timer_count == connected_clients[i].first_delay_ms)
             {
                 motion_msg_send(conn_handle, HEALTH_DATA_REQUEST,1);
@@ -301,7 +310,7 @@ void add_client(uint16_t conn_handle, const uint8_t *mac) {
             connected_clients[i].is_connected = true;
             connected_clients[i].xtimer = xTimerCreate("adv_delay", pdMS_TO_TICKS(1000), pdTRUE, NULL, Tracker_Motion_send);
             connected_clients[i].xMotionTimer = xTimerCreate("motion", pdMS_TO_TICKS(1000), pdTRUE, NULL, Tracker_Motion_retry);
-            connected_clients[i].first_delay_ms = (esp_random() % 20) + 1;              
+            connected_clients[i].first_delay_ms = (esp_random() % 20) + 1;     
             xTimerStart(connected_clients[i].xtimer, 0);            
             break;
         }
@@ -335,6 +344,21 @@ uint8_t count_client(void)
     }
 
     return active_conn_cnt;
+}
+void client_terminate(void)
+{
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (connected_clients[i].is_connected) {
+            ble_gap_terminate(connected_clients[i].conn_handle,BLE_ERR_REM_USER_CONN_TERM);
+            connected_clients[i].is_connected = false;
+            connected_clients[i].conn_handle = BLE_HS_CONN_HANDLE_NONE;
+            xTimerStop(connected_clients[i].xtimer, 0);
+            xTimerDelete(connected_clients[i].xtimer, 0);
+            xTimerStop(connected_clients[i].xMotionTimer, 0);
+            xTimerDelete(connected_clients[i].xMotionTimer, 0);
+            memset(&connected_clients[i],0,sizeof(connected_clients[i]));
+        }
+    }
 }
 // 2. DISCONNECT 이벤트 발생 시 삭제
 void remove_client(uint16_t conn_handle) {
@@ -414,10 +438,7 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         if (esp_timer_is_active(Mac_sending_timer)) {
             esp_timer_stop(Mac_sending_timer);
         }
-        ESP_LOGI("BLE_GAP", "현재 연결된 기기 수: %d / %d", 
-                    count_client(), CONFIG_BT_NIMBLE_MAX_CONNECTIONS);        
         current_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-
 
         if (event->disconnect.conn.conn_handle <= CONFIG_BT_NIMBLE_MAX_CONNECTIONS) {
             conn_handle_subs[event->disconnect.conn.conn_handle] = false;
@@ -457,6 +478,11 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         app_config_t* app_config = get_app_config();
         dev_info_t dev_list;
 
+        // -----------------------------------------------------------------
+        // 1. ⚡️ [새로운 필터] RSSI 조건 검사 (간혹 부호가 헷갈릴 수 있으니 주의)
+        //    * 수신 감도가 -55 dBm 이하(예: -56, -60, -70 dBm처럼 멀리 있는 기기)인 경우만 통과
+        //    * 만약 -55보다 신호가 쌘 것(-50, -40 dBm 등)을 원하신 거라면 `>`로 부호를 바꿔주세요.
+        // -----------------------------------------------------------------
         if (event->disc.rssi < app_config->gate_way_rssi_th) {
             return 0; // -55보다 큰 신호는 여기서 즉시 차단
         }
@@ -511,7 +537,6 @@ static int ble_spp_server_gap_event(struct ble_gap_event *event, void *arg)
         {
             dev_list.addr[i] = event->disc.addr.val[5-i];
         }
-
         // 최신 이름과 RSSI 데이터 업데이트 저장
         strcpy(dev_list.name, current_packet_name);
         dev_list.rssi = event->disc.rssi;
@@ -586,7 +611,23 @@ void ble_spp_server_host_task(void *param)
     nimble_port_run();
     nimble_port_freertos_deinit();
 }
+struct ble_npl_event adv_update_event;
 
+void ble_advertising_reset(void)
+{
+    ble_npl_eventq_put(
+    nimble_port_get_dflt_eventq(),
+    &adv_update_event
+    );
+}
+static void adv_update_event_fn(struct ble_npl_event *ev)
+{
+    // 여기서는 NimBLE host context
+
+    ble_gap_adv_stop();
+
+    delay_adv_timer_cb(NULL);
+}
 /**
  * GATT 캐릭터리스틱 처리 (중괄호 블록을 넣어 컴파일 에러 완전 수정)
  */
@@ -764,7 +805,7 @@ bool ble_send_data_to_queue(uint16_t* conn_handle, const uint8_t *data, uint16_t
 
     // 2. 안전 장치: 큐가 생성되지 않은 상태라면 차단
     if (ble_tx_queue == NULL) {
-        ESP_LOGI(TAG,"[BLE TX FUNC] 에러: ble_tx_queue가 초기화되지 않았습니다.\n");
+        ESP_LOGI(TAG,"[BLE TX FUNC] 에러: ble_tx_queue가 초기화되지 않았습니다.");
         return false;
     }
 
@@ -825,16 +866,17 @@ static void ble_tx_processing_task(void *pvParameters)
                     
                     // msg.data의 offset 위치부터 send_len 만큼 잘라서 쏘기
                     ble_server_send_notify(msg.conn_handle, &msg.data[offset], send_len);
-                    ESP_LOGI(TAG, " %d 바이트 중 %d 바이트 쪼개서 전송 완료 (offset: %d)\n", msg.len, send_len, offset);
-                    ESP_LOG_BUFFER_HEX(TAG, msg.data,  msg.len);
+                    ESP_LOGI(TAG,"[TX 태스크] %d 바이트 중 %d 바이트 쪼개서 전송 완료 (offset: %d)", msg.len, send_len, offset);
+                    ESP_LOG_BUFFER_HEXDUMP(TAG, msg.data, msg.len, ESP_LOG_INFO);
+
                     offset += send_len;
                     
                     // 연속 전송 시 BLE 컨트롤러 큐 오버플로우 방지 (필수)
                     vTaskDelay(pdMS_TO_TICKS(15));
                 }
-                ESP_LOGI(TAG, "스마트폰으로 %d 바이트 Notify 전송 완료\n", msg.len);
+                ESP_LOGI(TAG,"[TX 태스크] 스마트폰으로 %d 바이트 Notify 전송 완료", msg.len);
             } else {
-               ESP_LOGI(TAG,"경고: 스마트폰이 연결되어 있지 않아 전송 취소\n");
+                ESP_LOGI(TAG,"[TX 태스크] 경고: 스마트폰이 연결되어 있지 않아 전송 취소");
             }
             free(msg.data);   
         }
@@ -853,7 +895,7 @@ static void mac_send_timer_callback(void* arg)
     // [by.jeon] ble 연결 직후 meta 데이터를 보내야 한다.
     snprintf(Str, sizeof(Str), 
              "{\"event_type\":\"meta\",\"data\":{\"serial\":\"%s-%02X%02X%02X%02X%02X%02X\",\"model\":\"%s\",\"hw_rev\":\"%s\",\"fw\":\"%s\"}}", 
-             CONFIG_DEVICE_PREFIX,                               //
+             CONFIG_DEVICE_PREFIX,                               // 
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],     // MAC Address
              CONFIG_DEVICE_TYPE,                                 //
              CONFIG_HW_REV,                                      // r1.0
@@ -925,9 +967,9 @@ void ble_task_init(void)
     esp_err_t err = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P15);
     
     if (err == ESP_OK) {
-        ESP_LOGI(TAG,"BLE TX Power set successfully!\n");
+        ESP_LOGI(TAG,"BLE TX Power set successfully!");
     } else {
-        ESP_LOGI(TAG,"Failed to set BLE TX Power: %d\n", err);
+        ESP_LOGI(TAG,"Failed to set BLE TX Power: %d", err);
     }
     #ifndef CONFIG_EXAMPLE_IO_TYPE
     #define CONFIG_EXAMPLE_IO_TYPE 3 
@@ -940,7 +982,6 @@ void ble_task_init(void)
     sprintf(name,"%s-WAVE",CONFIG_DEVICE_PREFIX);
 
     assert(ble_svc_gap_device_name_set(name) == 0);
-
     ble_store_config_init();
 
     const esp_timer_create_args_t mac_sending_timer_args = {
@@ -952,27 +993,29 @@ void ble_task_init(void)
     ble_rx_queue = xQueueCreate(10, sizeof(ble_data_msg_t));
     ble_tx_queue = xQueueCreate(10, sizeof(ble_data_msg_t));
 
-    // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.
-    if (xTaskCreatePinnedToCore(
+    ble_npl_event_init(
+        &adv_update_event,
+        adv_update_event_fn,
+        NULL
+    );
+    if (xTaskCreate(
             ble_rx_processing_task,                  // 태스크 함수
             "ble_rx_task",                // 태스크 이름
             BLE_TRX_TASK_STACK_SIZE,       // 스택 크기
             NULL,        // 파라미터
             tskIDLE_PRIORITY + 3,      // 우선순위
-            NULL,                  // 태스크 핸들
-            1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
+            NULL
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
                 ESP_LOGE(TAG, "Error creating ble_rx_task on Core 1");
     }
 
-    if (xTaskCreatePinnedToCore(
+    if (xTaskCreate(
             ble_tx_processing_task,                  // 태스크 함수
             "ble_tx_task",                // 태스크 이름
             BLE_TRX_TASK_STACK_SIZE,       // 스택 크기
             NULL,        // 파라미터
             tskIDLE_PRIORITY + 3,      // 우선순위
-            NULL,                  // 태스크 핸들
-            1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
+            NULL
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
               ESP_LOGE(TAG, "Error creating ble_tx_task on Core 1");
     }

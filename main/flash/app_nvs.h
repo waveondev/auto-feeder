@@ -2,6 +2,8 @@
 #define __APP_NVS_H__
 #include "esp_log.h"
 #include "esp_err.h"
+#define FACTORY_NAMESPACE       "FACTO"
+#define FACTORY_KEY             "factory"
 #define APP_NAMESPACE           "WAVEON"
 #define APP_KEY_CONFIGURATION   "CONFIG"
 #define APP_KEY_WIFI_CONFIG     "WIFI"
@@ -25,4 +27,5 @@ void delete_nvs_key(const char* name, const char* key);
 void print_all_nvs_keys(void);
 bool read_nvs_registration_flag(void);
 void write_nvs_registration_flag(bool done);
+void facto_set(bool status);
 #endif

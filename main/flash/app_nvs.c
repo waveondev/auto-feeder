@@ -6,10 +6,44 @@
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "app_config_flash.h"
+#include "opmode_task.h"
 
 static const char *TAG = __FILE__;
 
 
+void facto_set(bool status)
+{
+    app_config_t* app_config = get_app_config();
+    app_facto_config_t* facto_config = get_facto_config();
+    float hx1_scale_buf;
+    int32_t hx1_offset_buf;
+    uint32_t case_raw_data_buf;
+    hx1_scale_buf = app_config->hx1_scale;
+    hx1_offset_buf = app_config->hx1_offset;
+    case_raw_data_buf = app_config->case_raw_data;
+    memset(app_config, 0,sizeof(app_config_t));
+    app_config->op_mode = FEED_MODE_SCHEDULED_PORTION;
+    app_config->sliding_close_mode = 0;
+    app_config->motor_current_limit = 1200;
+    app_config->motor_stuck_retry_count = 3;
+    app_config->food_low_limit = 10;
+    app_config->gate_way_rssi_th = -80;
+    app_config->hx1_scale = 1000.0f;
+    app_config->hx1_offset = 0;
+    app_config->case_raw_data = 0;
+    app_config->tof_sense_threshold = 50;
+    app_config->motion_data_time = 1800;
+    app_config->dispense_duration = 360;
+    app_config->dispense_amount_g = 50;
+    sprintf(app_config->env_mode,"dev");
+
+    app_config->hx1_scale = facto_config->hx1_scale;
+    app_config->case_raw_data = facto_config->case_raw_data;                    
+
+    app_nvs_save_set();
+
+}
 // [쓰기 함수] 
 // len 매개변수는 nvs_set_str 내부에서 자동으로 길이를 계산하므로 사실상 안 써도 무방합니다.
 void write_nvs_memory(const char* name, const char* key, const char* data)

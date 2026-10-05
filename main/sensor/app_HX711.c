@@ -12,6 +12,7 @@
 #include "debug_cli.h"
 #include "tx_mqtt.h"
 #include "aws_iot_task.h"
+#include "setting_cmd.h"
 static const char *TAG = __FILE__;
 
 static float filtered_weight = 0.0f; // 현재 필터링된 최종 무게값
@@ -46,24 +47,29 @@ static uint16_t hx711_cal_enable = 0;
 static void HX711_scale_process(float weight)
 {
     app_config_t* app_config = get_app_config();
-
+    app_facto_config_t* facto_config = get_facto_config();
     hx711_calibrate_scale(&dev,10,weight,&app_config->hx1_scale,(int32_t)app_config->case_raw_data);
-
+    facto_config->hx1_scale = app_config->hx1_scale;
     app_nvs_save_set();
+    facto_nvs_save_set();
     ESP_LOGI(TAG, "Tare case set to %d(%.2f)\r\n", app_config->case_raw_data,(int32_t)app_config->hx1_scale);
+    Setting_Enable(HX711_Scale_cal);
 }
 
 static void HX711_case_raw_process(void)
 {
     app_config_t* app_config = get_app_config();
+    app_facto_config_t* facto_config = get_facto_config();
 
     int32_t cal_data = 0;
 
     while(hx711_read_average(&dev, 100, &cal_data) != ESP_OK){}
     app_config->case_raw_data = (cal_data);
-
+    facto_config->case_raw_data = (cal_data);
     app_nvs_save_set();
+    facto_nvs_save_set();
     ESP_LOGI(TAG, "Tare case set to %d(%.2f)\r\n", app_config->case_raw_data);
+    Setting_Enable(HX711_Case_cal);
 }
 void HX711_cal_init(uint16_t cal)
 {

@@ -2,6 +2,7 @@
 #include "app_config_flash.h"
 #include "ble_tracker_id.h"
 #include "ble_task.h"
+#include "app_led.h"
 DBG_Resister_t DBG_Resister;
 
 
@@ -129,6 +130,10 @@ BaseType_t prvDebugformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				print_connected_clients();
 			}		
+			else if (!strncmp(ag[1], "error", 5))
+			{
+				led_status_print();
+			}	
 			/* There are more parameters to return after this one. */
 //			pcWriteBuffer[ 0 ] = 0x00;
 			xReturn = pdFALSE;

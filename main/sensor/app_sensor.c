@@ -90,7 +90,6 @@ void Sensor_task(void *pvParameter)
     while (1) {
 
 
-        vTaskDelay(25 / portTICK_PERIOD_MS);
         VL53L0X_Sensing();
 
         if(DBG_Resister->sens)
@@ -102,7 +101,7 @@ void Sensor_task(void *pvParameter)
             ESP_LOGI(TAG, "FEED = %d\r\n",Feed_Front_Enable()?1:0);
         }    
 
-        vTaskDelay(25 / portTICK_PERIOD_MS);            
+        vTaskDelay(30 / portTICK_PERIOD_MS);            
     }
     
 }

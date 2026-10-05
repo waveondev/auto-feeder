@@ -12,12 +12,12 @@
 #include "app_acc_motor.h"
 #include "app_led.h"
 static const char *TAG = __FILE__;
-#define ADC_LEN 5
+#define ADC_LEN 4
 
 #define ADC_SAMPLE_NUM      256
 
-static adc_channel_t adc1_dma_channels[ADC_LEN] = {ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_5,ADC_CHANNEL_6,ADC_CHANNEL_7};
-
+static adc_channel_t adc1_dma_channels[ADC_LEN] = {ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_5,ADC_CHANNEL_6};
+static adc_oneshot_unit_handle_t adc1_oneshot_handle = NULL;
 static adc_continuous_handle_t adc_handle = NULL;
 
 static adc_cali_handle_t cali_handle[ADC_LEN] = {0};
@@ -48,6 +48,27 @@ int GetFeed_ADC(void)
 int GetIR_ADC(void)
 {
     return IR_Adc_mv;
+}
+
+#define IR_ADC_SAMPLES 32
+
+static int IR_ADC_Average(adc_channel_t channel)
+{
+    int sum = 0;
+    int raw = 0;
+
+    for (int i = 0; i < IR_ADC_SAMPLES; i++) {
+        adc_oneshot_read(adc1_oneshot_handle, channel, &raw);
+        sum += raw;
+    }
+
+    return sum / IR_ADC_SAMPLES;
+}
+
+
+void IR_SenSing(void)
+{
+    IR_Adc_mv  = IR_ADC_Average(ADC_CHANNEL_7);
 }
 
 static bool init_adc_calibration(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle) {
@@ -122,8 +143,8 @@ void ADC_Sensing(void)
     esp_err_t ret = adc_continuous_read(adc_handle, dma_result, sizeof(dma_result), &ret_num, pdMS_TO_TICKS(100));
     adc_continuous_stop(adc_handle);               
 
-    uint32_t val_ch7 = 0, val_ch6 = 0, val_ch5 = 0, val_ch1 = 0, val_ch0 = 0;
-    uint32_t cnt_ch7 = 0, cnt_ch6 = 0, cnt_ch5 = 0, cnt_ch1 = 0, cnt_ch0 = 0;
+    uint32_t  val_ch6 = 0, val_ch5 = 0, val_ch1 = 0, val_ch0 = 0;
+    uint32_t  cnt_ch6 = 0, cnt_ch5 = 0, cnt_ch1 = 0, cnt_ch0 = 0;
 
     if (ret == ESP_OK && ret_num > 0) {
         for (int i = 0; i < ret_num; i += SOC_ADC_DIGI_DATA_BYTES_PER_CONV) {
@@ -142,9 +163,6 @@ void ADC_Sensing(void)
             } else if (chan == ADC_CHANNEL_6) {
                 val_ch6 += data;
                 cnt_ch6++;
-            } else if (chan == ADC_CHANNEL_7) {
-                val_ch7 += data;
-                cnt_ch7++;
             } 
         }
 
@@ -152,7 +170,6 @@ void ADC_Sensing(void)
         if (cnt_ch1) val_ch1 /= cnt_ch1; 
         if (cnt_ch5) val_ch5 /= cnt_ch5;
         if (cnt_ch6) val_ch6 /= cnt_ch6;
-        if (cnt_ch7) val_ch7 /= cnt_ch7; 
 
 
     }
@@ -161,11 +178,10 @@ void ADC_Sensing(void)
     Bat_Adc_mv = val_ch1;
     SLID_Motor_mv = val_ch5;
     FEED_Motor_mv = val_ch6;
-    IR_Adc_mv = val_ch7;
 
     if (DBG_Resister && DBG_Resister->adc) {
-        ESP_LOGI(TAG, "[DMA] acc_CH0: %lu | bat_CH1: %lu | slid_CH5: %lu | feed_CH6: %lu | ir_CH7: %lu", 
-                 val_ch0, val_ch1, val_ch5, val_ch6, val_ch7);  
+        ESP_LOGI(TAG, "[DMA] acc_CH0: %lu | bat_CH1: %lu | slid_CH5: %lu | feed_CH6: %lu | IR = %lu", 
+                 val_ch0, val_ch1, val_ch5, val_ch6, IR_Adc_mv);  
     }
 
     if (ret == ESP_ERR_TIMEOUT) {
@@ -186,6 +202,21 @@ void ADC_Sensing(void)
     }
 }
 void adc_init(void) {
+    // ------------------------------------------
+    // 1. ADC Oneshot 초기화 (CH3, CH4 용)
+    // ------------------------------------------
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = ADC_UNIT_1,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_oneshot_handle));
+    // CH3 (GPIO3) 감쇠(Atten) 설정
+    adc_oneshot_chan_cfg_t config = {
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+        .atten = ADC_ATTEN_DB_12, // 기존 코드와 동일한 12dB (약 0~3.3V)
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_oneshot_handle, ADC_CHANNEL_7, &config));
+
+
 // 1. DMA 핸들 생성
     adc_continuous_handle_cfg_t handle_cfg = {
         .max_store_buf_size = 1024,

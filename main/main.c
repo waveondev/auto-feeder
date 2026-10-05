@@ -27,7 +27,7 @@ extern void tcp_client(void);
 #include "esp_vfs_dev.h"
 #include "app_sensor.h"
 #include "app_config_flash.h"
-#include "motion_task.h"
+#include "setting_cmd.h"
 #include "ble_tracker_id.h"
 #include "isd2360.h"
 
@@ -105,15 +105,15 @@ void app_main(void) {
 
     console_task_init();
     init_motor_ledc();
-    button_task_init();
-
+    
     LED_task_init();
     sensor_init();
+    ble_task_init();
+
+    button_task_init();
+    
     opmode_task_init();
     Create_Tracker_Capture_Task();
-    ble_task_init();
-    //isd2360_taskinit();
-
 
     wifi_init();
     aws_iot_task_init();

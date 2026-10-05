@@ -101,10 +101,14 @@ void bf_LongPress5SecAction(void) {
 }
 
 void bf_LongPress10SecAction(void) {
-    //if(button_lock == true)
-        //return;
+    if(button_lock == true)
+    {
+        led_bit_enable(LOCK_MODE_BIT);
+        return;     
+    }
+        
     ESP_LOGI(TAG,"Long Press 10 Sec Action executed \r\n");
-
+    facto_set(true);
     
     
     //delay(1000); 
@@ -213,7 +217,7 @@ void button_task_init(void)
     gpio_install_isr_service(0);
     gpio_isr_handler_add(PIN_PKEY_STAT, gpio_isr_handler, (void*) PIN_PKEY_STAT);
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    
+
     double_click_timer = xTimerCreate("double_click_timer", pdMS_TO_TICKS(DOUBLE_CLICK_DELAY_MS), 
                                       pdFALSE, (void*)0, double_click_timer_callback);
                                       
@@ -228,4 +232,5 @@ void button_task_init(void)
         ) != pdPASS) {
         ESP_LOGE(TAG, "Error creating Button_task on Core 1");
     }
+    int current_level = gpio_get_level(PIN_PKEY_STAT);
 }

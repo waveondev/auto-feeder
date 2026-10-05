@@ -1,7 +1,7 @@
 #include "app_led.h"
 #include "led_strip.h"
 #include "gpio_util.h"
-#define LED_NUMBERS  6   // 연결된 네오픽셀 LED 총 개수 (예: 3개)
+#define LED_NUMBERS  3   // 연결된 네오픽셀 LED 총 개수 (예: 3개)
 #define LED_BRIGHTNESS_MAX    255
 
 
@@ -132,6 +132,30 @@ void led_bit_disable(uint16_t disable)
         ESP_LOGE(TAG, "led_status_resister = %08x",led_status_resister);
     }
 }
+void led_status_print(void)
+{
+    if(motor_error_enable())
+        ESP_LOGI(TAG, "motor_error_enable");
+    if(motor_mode_enable())
+        ESP_LOGI(TAG, "motor_mode_enable");     
+    if(lock_mode_enable())
+        ESP_LOGI(TAG, "lock_mode_enable");
+    if(food_empty_enable())
+        ESP_LOGI(TAG, "food_empty_enable");
+    if(food_discharge_enable())
+        ESP_LOGI(TAG, "food_discharge_enable");    
+    if(food_low_enable())
+        ESP_LOGI(TAG, "food_low_enable");
+    if(pairing_enable())
+        ESP_LOGI(TAG, "pairing_enable");
+    if(hardware_error_enable())
+        ESP_LOGI(TAG, "hardware_error_enable");      
+    if(TOF_enable())
+        ESP_LOGI(TAG, "TOF_enable");
+    if(ota_enable())
+        ESP_LOGI(TAG, "ota_enable");        
+        
+}
 
 
 void init_led_strip(void) {
@@ -166,6 +190,23 @@ void set_led_clear(void) {
     
 }
 
+void set_rgb_led_for_number(uint32_t index, uint8_t R, uint8_t G, uint8_t B, uint8_t W)
+{
+    if(Breathing_Setting.used)
+        memset(&Breathing_Setting, 0, sizeof(Breathing_Setting_t));
+    if(index >= LED_NUMBERS)
+        return;
+    for(int i=0;i<LED_NUMBERS;i++)
+    {
+         led_strip_set_pixel_rgbw(led_strip, i, 0, 0, 0, 0);
+    }        
+    {
+         led_strip_set_pixel_rgbw(led_strip, index, R, G, B, W);
+    }
+    // 실제 SK6812 칩들로 32비트 정밀 신호 전송
+
+    led_strip_refresh(led_strip); 
+}
 
 void set_rgb_led(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
 {
@@ -321,7 +362,18 @@ static void Breathing_LED(void)
     }
 }
 
+void led_test(void)
+{
+    set_rgb_len_no_Breathing(255, 0, 0, 0); 
+    vTaskDelay(1000);
+    set_rgb_len_no_Breathing(0, 255, 0, 0); 
+    vTaskDelay(1000);
+    set_rgb_len_no_Breathing(0, 0, 255, 0); 
+    vTaskDelay(1000);
+    set_rgb_len_no_Breathing(0, 0, 0, 255); 
+    vTaskDelay(1000);        
 
+}
 static void LED_task(void *pvParameter)
 {
 
@@ -336,12 +388,14 @@ static void LED_task(void *pvParameter)
     ESP_LOGI(TAG, "Starting LED_task (Pure Event Driven Mode)");
     DBG_Resister_t *DBG_Resister = Debug_Get();
     static uint16_t led_status_resister_buf = 0;
+    //DBG_Resister->led = 1;
     while (1) {
         app_tof_sensor_poll_100ms();
    
         if(DBG_Resister->led)
         {
             Breathing_LED();  
+            //led_test();
         }
         else
         {
@@ -356,8 +410,8 @@ static void LED_task(void *pvParameter)
             {
                 switch(button_state) {
                     case 1: set_rgb_len_no_Breathing(0, LED_brightness_value, 0, 0); break;
-                    case 2:  set_rgb_len_no_Breathing(0, 0, LED_brightness_value, 0);; break;
-                    case 3:  set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value);; break;
+                    case 2:  set_rgb_len_no_Breathing(0, 0, LED_brightness_value, 0); break;
+                    case 3:  set_rgb_len_no_Breathing(0, 0, 0, LED_brightness_value); break;
                     default: break;
                 }
             }
@@ -400,17 +454,18 @@ static void LED_task(void *pvParameter)
                         }
                         led_bit_disable(LOCK_MODE_BIT);
                     }
-                    else if (pairing_enable()) {
-                        Breathing_Setup(1,2,0,LED_brightness_value,0,0,255,0);
-                        Breathing_LED();
-                    }
+
                     else if (ota_enable()) {
                         Breathing_Setup(1,2,0,LED_brightness_value,255,0,255,0);
                         Breathing_LED();
                     }                  
                     else if (TOF_enable()){
                         set_rgb_len_no_Breathing(0, LED_brightness_value, 0, 0); 
-                    }         
+                    }       
+                    else if (pairing_enable()) {
+                        Breathing_Setup(1,2,0,LED_brightness_value,0,0,255,0);
+                        Breathing_LED();
+                    }                      
                 }
                 // [우선순위 2] 비트가 다 꺼진 정상 상태라면 op_mode 적용
                 else 

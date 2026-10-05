@@ -24,14 +24,13 @@
 
 #define FACTORY_REQUEST       0xF0
 #define FACTORY_RESPONSE      0xF1
+#define SETTING_REQUEST       0xF2
+#define SETTING_RESPONSE      0xF3
 
-typedef union {
-    struct {
-        uint16_t data : 14;  
-        uint16_t type : 2;  
-    } bit;                   
-    uint16_t word;           
-} pack_data;
+
+
+
+
 
 typedef union {
       struct {
@@ -51,24 +50,16 @@ typedef struct {
   uint8_t event_code;
   union
   {
-      struct
+       struct
       {
-        uint8_t interval;
-        uint16_t total_points;
-        uint16_t padding[8];
+        uint32_t total_points;
+        uint8_t send_points;
+        uint16_t padding[7];
       } motion_req;
       struct
       {
         uint8_t seq;
-        pack_data pack_data_0;
-        pack_data pack_data_1;
-        pack_data pack_data_2;
-        pack_data pack_data_3;
-        pack_data pack_data_4;
-        pack_data pack_data_5;
-        pack_data pack_data_6;
-        pack_data pack_data_7;
-        pack_data pack_data_8;
+        uint8_t MLC_data[18]; 
       } motion_data;
       struct
       {
@@ -162,6 +153,16 @@ typedef struct {
         uint32_t epoch_sec;
         uint8_t padding[14];
       } time_res;
+      struct
+      {
+        uint8_t cmd_type;
+        uint8_t data[18];
+      } setting_req;
+      struct
+      {
+        uint8_t cmd_type;
+        uint8_t data[18];
+      } setting_res;      
   };
 } Motion_Packet_t;
 #pragma pack(pop)

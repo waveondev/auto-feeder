@@ -10,7 +10,7 @@
 #include "mqtt_operations.h"
 
 #include "tx_mqtt.h"
-
+#include "esp_timer.h"  // 👈 이 줄을 추가해 주세요!
 // #include "core_mqtt.h"
 // #include "fleet_provisioning_with_csr_demo.h" 
 
@@ -34,8 +34,6 @@ extern int aws_iot_provisioning_main( int argc, char ** argv );
 static void Health_timer_callback(void* arg)
 {
     mqtt_queue_send(MESSEGE_HEALTH,NULL,0);
-    //mqtt_queue_send(AWS_MESSEGE_AWS_JOBS_GET);
-
     
     if (esp_timer_is_active(Health_timer)) {
         esp_timer_stop(Health_timer);
@@ -73,9 +71,9 @@ bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, void* data, uint32_t data_len)
     }
     return true;
 }
-void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  pack_data* data )
+void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  uint8_t* data )
 {
-    tracker_mqtt_packet_t tracker_mqtt_packet;
+    tracker_mqtt_packet_t mqtt_packet;
 
     if(tracker_mqtt_queue == NULL)
     {
@@ -86,16 +84,78 @@ void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Pac
     }
 
 
-    memset(&tracker_mqtt_packet,0,sizeof(tracker_mqtt_packet_t));
-    tracker_mqtt_packet.cmd = cmd;
-    memcpy(tracker_mqtt_packet.mac,mac,sizeof(tracker_mqtt_packet.mac));
-    memcpy(&tracker_mqtt_packet.packet,packet,sizeof(Motion_Packet_t));
-    tracker_mqtt_packet.data_len = data_len;
-    tracker_mqtt_packet.data = data;
+    memset(&mqtt_packet,0,sizeof(tracker_mqtt_packet_t));
+    mqtt_packet.cmd = cmd;
+    memcpy(mqtt_packet.mac,mac,sizeof(mqtt_packet.mac));
+    memcpy(&mqtt_packet.packet,packet,sizeof(Motion_Packet_t));
+    mqtt_packet.data_len = data_len;
+    mqtt_packet.data = data;
     ESP_LOGW("mqtt_tx", "tracker_mqtt_queue send.");
-    if (xQueueSend(tracker_mqtt_queue, &tracker_mqtt_packet, 0) != pdPASS) {
+    if (xQueueSend(tracker_mqtt_queue, &mqtt_packet, 0) != pdPASS) {
         ESP_LOGW("mqtt_tx", "Queue full! Dropping packet and freeing memory.");
     }
+}
+
+static esp_timer_handle_t aws_success_timer = NULL;
+static esp_timer_handle_t aws_disconnect_timer = NULL;
+bool aws_connect_flag = false;
+
+#define MIN_TO_US(min) ((uint64_t)(min) * 60ULL * 1000000ULL)
+#define SEC_TO_US(sec) ((uint64_t)(sec) * 1000000ULL)
+#include "ble_task.h"
+bool aws_connected_state(void)
+{
+    return aws_connect_flag;
+}
+void ble_advertising_reset(void);
+static void aws_success_callback(void* arg)
+{
+    if (esp_timer_is_active(aws_disconnect_timer)) {
+        esp_timer_stop(aws_disconnect_timer);
+    } 
+    aws_connect_flag = true;
+    ble_advertising_reset();
+    ESP_LOGI(TAG, "aws_flag"); 
+}
+static void aws_discon_callback(void* arg)
+{
+    client_terminate();
+    ble_advertising_reset();
+    ESP_LOGI(TAG, "aws_discon"); 
+}
+
+
+
+static void flag_success_set(bool state)
+{
+
+    if (esp_timer_is_active(aws_success_timer)) {
+        esp_timer_stop(aws_success_timer);
+    } 
+    if(state)
+    {
+        esp_timer_start_once(aws_success_timer, MIN_TO_US(1));
+        ESP_LOGI(TAG, "aws_timer set"); 
+    }
+    else
+        ESP_LOGI(TAG, "aws_timer reset"); 
+}
+
+
+
+static void ble_discon_timer_set(bool state, uint64_t discon_timeout)
+{
+
+    if (esp_timer_is_active(aws_disconnect_timer)) {
+        esp_timer_stop(aws_disconnect_timer);
+    } 
+    if(state)
+    {
+        esp_timer_start_once(aws_disconnect_timer, SEC_TO_US(discon_timeout));
+        ESP_LOGI(TAG, "ble_discon_timer set"); 
+    }
+    else
+        ESP_LOGI(TAG, "ble_discon_timer reset"); 
 }
 
 static void aws_iot_main_entry(void *pvParameters)
@@ -109,11 +169,27 @@ static void aws_iot_main_entry(void *pvParameters)
         pdTRUE,
         portMAX_DELAY
     );
+    static uint32_t discon_timeout = 0;
     // -------------------------------------------------------------
     // 1. [1회성 초기화] 큐 및 타이머 생성을 루프 밖에서 단 1번만 수행
     // -------------------------------------------------------------
     mqtt_tx_queue = xQueueCreate(10, sizeof(mqtt_packet_t));
     tracker_mqtt_queue = xQueueCreate(10, sizeof(tracker_mqtt_packet_t));
+
+    const esp_timer_create_args_t aws_success_args = {
+        .callback = &aws_success_callback,
+        .name = "aws_flag_timer"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&aws_success_args, &aws_success_timer));
+
+
+    const esp_timer_create_args_t aws_discon_args = {
+        .callback = &aws_discon_callback,
+        .name = "aws_discon_timer"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&aws_discon_args, &aws_disconnect_timer));
 
     const esp_timer_create_args_t Health_timer_args = {
         .callback = &Health_timer_callback,
@@ -153,12 +229,13 @@ static void aws_iot_main_entry(void *pvParameters)
                 esp_restart();
         }
 
-
+        
         // 2) MQTT 연결이 붙었으니 헬스 타이머 동작 시작!
         esp_timer_start_once(Health_timer, TIMER_1_MIN_IN_US);
 
         ESP_LOGI(TAG, "=== MQTT 송수신 메인 루프 진입 ===");
 
+        flag_success_set(true);
         // MQTT 송수신 메인 루프
         for(;;) {
             if (xQueueReceive(mqtt_tx_queue, &mqtt_packet, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -181,10 +258,12 @@ static void aws_iot_main_entry(void *pvParameters)
             /* 수신 및 네트워크 연결 감시 */
             if (ProcessLoopWithTimeout(10) == false) {
                 ESP_LOGE(TAG, "MQTT 연결 끊김 감지!");
+                aws_connect_flag = false;
+                ble_discon_timer_set(true,discon_timeout);
                 break; // for 루프 탈출
             }
         }
-
+        
         // =========================================================
         // 🔴 [연결 끊김 시점]
         // =========================================================
@@ -204,14 +283,13 @@ void aws_iot_task_init(void)
 
     if (is_aws_started == false) {
 
-        if (xTaskCreatePinnedToCore(
+        if (xTaskCreate(
             aws_iot_main_entry,                  // 태스크 함수
             "aws_iot_task",                // 태스크 이름
             AWS_IOT_TASK_STACK_SIZE,       // 스택 크기
             NULL,        // 파라미터
             tskIDLE_PRIORITY + 5,      // 우선순위
-            NULL,                  // 태스크 핸들
-            1                          // ⭐ 코어 ID (1번 코어 = APP_CPU)
+            NULL
         ) != pdPASS) {                 // pdTRUE 대신 pdPASS를 쓰는 것이 FreeRTOS 관례입니다.
             ESP_LOGE(TAG, "Error creating aws_iot_task on Core 1");
         }

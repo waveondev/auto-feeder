@@ -181,7 +181,7 @@ static void slidmotor_boost_task(void *pvParameters)
     uint32_t slid_stuck_count = 0;
     while(1)
     {
-        if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(10)) == pdPASS) {
+        if (xQueueReceive(slid_motor_queue, &received_data, pdMS_TO_TICKS(100)) == pdPASS) {
             ESP_LOGW(TAG, "큐 수신 완료! -> [모터 구동] 속도: %d%%, 유지시간: %d초", received_data.target_percentage, received_data.Motor_Motion);
             slid_stuck_count = 0;
             led_bit_enable(SLID_MODE_BIT);
@@ -214,6 +214,7 @@ static void slidmotor_boost_task(void *pvParameters)
             }
             
             set_slid_motor_speed_percent(target_percentage, Motor_CW);
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
         if(Motor_enable == true)
         {
