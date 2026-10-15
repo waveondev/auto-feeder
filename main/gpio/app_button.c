@@ -96,6 +96,7 @@ void bf_LongPress5SecAction(void) {
     }
         
     ESP_LOGI(TAG,"Long Press 5 Sec Action executed \r\n");
+    write_nvs_registration_flag(false);
     Wifi_Disconnect();
      wifi_scan_start();
 }
@@ -108,7 +109,7 @@ void bf_LongPress10SecAction(void) {
     }
         
     ESP_LOGI(TAG,"Long Press 10 Sec Action executed \r\n");
-    facto_set(true);
+    facto_set(false);
     
     
     //delay(1000); 

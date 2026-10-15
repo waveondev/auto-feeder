@@ -301,7 +301,11 @@ uint16_t wifi_scan_start(void)
 
 
 
-
+bool time_sync_flag = false;
+bool time_sync_get(void)
+{
+    return time_sync_flag;
+}
 // [단계 2] NTP 서버로부터 시간이 실제로 동기화되었을 때 호출되는 콜백 함수
 void time_sync_notification_cb(struct timeval *tv) {
     ESP_LOGI(TAG, "NTP 시간 동기화 완료!");
@@ -319,6 +323,7 @@ void time_sync_notification_cb(struct timeval *tv) {
     char strftime_buf[64];
     strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
     ESP_LOGI(TAG, "현재 한국 시간: %s", strftime_buf);
+    time_sync_flag = true;
 }
 
 // [단계 1] 와이파이 연결 성공 시 호출할 SNTP 초기화 함수

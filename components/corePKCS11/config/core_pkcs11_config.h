@@ -120,8 +120,8 @@
 /**
  * @brief ESP32 NVS namespace for PKCS #11 data
  */
-#define pkcs11configSTORAGE_NS         "creds"
-
+#define pkcs11configSTORAGE_NS         "WAVEON"
+//#define pkcs11configSTORAGE_NS         "creds"
 /**
  * @brief PKCS #11 default user PIN.
  *

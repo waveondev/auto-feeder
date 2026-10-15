@@ -68,7 +68,7 @@ static int IR_ADC_Average(adc_channel_t channel)
 
 void IR_SenSing(void)
 {
-    IR_Adc_mv  = IR_ADC_Average(ADC_CHANNEL_7);
+    IR_Adc_mv  = IR_ADC_Average(ADC_CHANNEL_2);
 }
 
 static bool init_adc_calibration(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle) {
@@ -214,7 +214,7 @@ void adc_init(void) {
         .bitwidth = ADC_BITWIDTH_DEFAULT,
         .atten = ADC_ATTEN_DB_12, // 기존 코드와 동일한 12dB (약 0~3.3V)
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_oneshot_handle, ADC_CHANNEL_7, &config));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_oneshot_handle, ADC_CHANNEL_2, &config));
 
 
 // 1. DMA 핸들 생성

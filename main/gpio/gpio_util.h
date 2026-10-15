@@ -13,7 +13,7 @@ typedef enum {
   LCS_WORKING_BLE_CONNECTED,
 } LED_States;
 #define LED_RGB_GPIO   38   // 네오픽셀 데이터 선이 연결된 GPIO 핀 번호
-#define LED_WHITE_GPIO   42   // 네오픽셀 데이터 선이 연결된 GPIO 핀 번호
+
 
 
 #ifndef PIN_HX711_DOUT
@@ -27,15 +27,10 @@ typedef enum {
 
 
 #ifndef IR_ENABLE
-#define IR_ENABLE 3
+#define IR_ENABLE 9
 #endif
 
 
-// 요청하신 핀 번호 정의
-#define ISD_MOSI_PIN  11
-#define ISD_MISO_PIN  13
-#define ISD_SCLK_PIN  12
-#define ISD_CS_PIN    10
 
 
 #define SLIDING_PWM_IN 15
@@ -47,16 +42,17 @@ typedef enum {
 #define ACUUM_PWM_CW     18
 
 #define SLIDING_A_SEN  42
-#define SLIDING_B_SEN  20
-#define FEED_SEN  19
+#define SLIDING_B_SEN  12
+#define FEED_A_SEN  10
 
-#define IR_ONOFF0 21
-#define IR_OUT0  4
+#define AMT_ENABLE 21
+#define IR_AMOUNT  4
 
 
-#define IR_ONOFF1 14
-#define IR_OUT1  5
+#define F_ENABLE  14
+#define IR_FOOD_OUT 5
 
+#define VBUS_CHECK 13
 #define VBUS_ADC  2
 
 

@@ -32,25 +32,26 @@ bool Sliding_Front_Enable(void)
 }
 bool Feed_Front_Enable(void)
 {
-    return gpio_get_level(FEED_SEN) == 1 ? true: false;
+    return gpio_get_level(FEED_A_SEN) == 1 ? true: false;
 }
 bool Food_Door_Detected_State(void)
 {
-    gpio_set_level(IR_ONOFF1, 1);   
+    gpio_set_level(F_ENABLE, 1);   
     vTaskDelay(1);
-    bool ret = gpio_get_level(IR_OUT1) == 1 ? false : true;
-    gpio_set_level(IR_ONOFF1, 0);   
+    bool ret = gpio_get_level(IR_FOOD_OUT) == 1 ? false : true;
+    gpio_set_level(F_ENABLE, 0);   
     return ret;
 }
 
 bool Food_Detected_State(void)
 {
-    gpio_set_level(IR_ONOFF0, 1);   
+    gpio_set_level(AMT_ENABLE, 1);   
     vTaskDelay(1);
-    bool ret = gpio_get_level(IR_OUT0) == 1 ? true : false;
-    gpio_set_level(IR_ONOFF0, 0);   
+    bool ret = gpio_get_level(IR_AMOUNT) == 1 ? true : false;
+    gpio_set_level(AMT_ENABLE, 0);   
     return ret;
 }
+#include "driver/gpio.h"
 void Sensor_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Starting sensor task");
@@ -71,10 +72,11 @@ void Sensor_task(void *pvParameter)
 // 3개 핀 비트마스크 구성 (1ULL << 핀번호)
     uint64_t pin_mask = (1ULL << SLIDING_A_SEN) | 
                         (1ULL << SLIDING_B_SEN) | 
-                        (1ULL << FEED_SEN) | 
-                        (1ULL << IR_OUT1) |
-                        (1ULL << IR_OUT0);
-
+                        (1ULL << FEED_A_SEN) | 
+                        (1ULL << IR_FOOD_OUT) |
+                        (1ULL << IR_AMOUNT) | 
+                        (1ULL << VBUS_CHECK);
+                        
     gpio_config_t io_conf = {                   
         .pin_bit_mask = pin_mask,             // 설정할 GPIO 핀 15, 16, 2 지정
         .mode = GPIO_MODE_INPUT,             // 출력 모드로 설정
@@ -91,34 +93,40 @@ void Sensor_task(void *pvParameter)
 
 
         VL53L0X_Sensing();
-
+ 
         if(DBG_Resister->sens)
         {
-            ESP_LOGI(TAG, "IR_OUT0 = %d\r\n",Food_Detected_State()?1:0);
-            ESP_LOGI(TAG, "IR_OUT1 = %d\r\n",Food_Door_Detected_State()?1:0);
-            ESP_LOGI(TAG, "SLI_B = %d\r\n",Sliding_Back_Enable()?1:0);
-            ESP_LOGI(TAG, "SLI_F = %d\r\n",Sliding_Front_Enable()?1:0);
-            ESP_LOGI(TAG, "FEED = %d\r\n",Feed_Front_Enable()?1:0);
+            ESP_LOGI(TAG, "IR_OUT0 = %d",Food_Detected_State()?1:0);
+            ESP_LOGI(TAG, "IR_OUT1 = %d",Food_Door_Detected_State()?1:0);
+            ESP_LOGI(TAG, "SLI_B = %d",Sliding_Back_Enable()?1:0);
+            ESP_LOGI(TAG, "SLI_F = %d",Sliding_Front_Enable()?1:0);
+            ESP_LOGI(TAG, "FEED = %d",Feed_Front_Enable()?1:0);
+
+            vTaskDelay(1000);
+            //gpio_set_level(AMT_ENABLE, !gpio_get_level(AMT_ENABLE));
+           // gpio_set_level(F_ENABLE, !gpio_get_level(F_ENABLE));
         }    
 
         vTaskDelay(30 / portTICK_PERIOD_MS);            
     }
     
 }
-
+#include "esp_private/periph_ctrl.h"
 bool sensor_init(void)
 {
-
+    gpio_reset_pin(AMT_ENABLE);
+    gpio_reset_pin(F_ENABLE);    
     gpio_config_t io_conf = {                   
-        .pin_bit_mask = (1ULL << IR_ONOFF0) | (1ULL << IR_ONOFF1),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .pin_bit_mask = (1ULL << AMT_ENABLE) | (1ULL << F_ENABLE),             // 설정할 GPIO 핀 15, 16, 2 지정
         .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
         .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
         .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
         .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
     };
     gpio_config(&io_conf);
-    gpio_set_level(IR_ONOFF0, 0);   
-    gpio_set_level(IR_ONOFF1, 0);   
+
+    gpio_set_level(AMT_ENABLE, 0);   
+    gpio_set_level(F_ENABLE, 0);   
     
     HX711_task_init();
     // xTaskCreate 대신 xTaskCreatePinnedToCore를 사용합니다.

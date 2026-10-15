@@ -62,11 +62,11 @@ void Setting_callback(Motion_Packet_t* Motion_Packet)
             Motion_Packet_buf.setting_res.cmd_type = LED_SetValue;
             DBG_Resister_t *DBG_Resister = Debug_Get();
             DBG_Resister->led = 1;
-            set_rgb_led_for_number(Motion_Packet_buf.setting_res.data[0]
+            index_set_rgb_led(Motion_Packet_buf.setting_res.data[0]
                                     ,Motion_Packet_buf.setting_res.data[1]
                                     ,Motion_Packet_buf.setting_res.data[2]
                                     ,Motion_Packet_buf.setting_res.data[3]
-                                    ,Motion_Packet_buf.setting_res.data[4]);
+                                    ,0);
             ble_send_data_to_queue(NULL,(uint8_t*)&Motion_Packet_buf,sizeof(Motion_Packet_t));        
         break;              
     }

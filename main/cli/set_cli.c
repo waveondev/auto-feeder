@@ -26,6 +26,7 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
     int  offset=0;
     int j;
     int	val32 = 0;
+	int index = 0;
 	app_wifi_config_t* wifi_config = get_wifi_config();
 	app_config_t* app_config = get_app_config();
 
@@ -85,40 +86,51 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			}
 			else if (!strncmp(ag[1], "ledoff", 6))
 			{
-                set_rgb_len_no_Breathing(0,0,0,0);
+                set_led_clear();
             }		
+			else if (!strncmp(ag[1], "ledc", 4))
+			{
+                val32 = atoi(ag[2]);
+                	
+				set_rgb_len_no_Breathing(val32, 0,0,0,0);
+            }				
 			else if (!strncmp(ag[1], "ledr", 4))
 			{
                 val32 = atoi(ag[2]);
-                set_rgb_len_no_Breathing(val32,0,0,0);
+                index = atoi(ag[3]);				
+                set_rgb_len_no_Breathing(val32, index,0,0,0);
             }	
 			else if (!strncmp(ag[1], "ledg", 4))
 			{
                 val32 = atoi(ag[2]);
-				set_rgb_len_no_Breathing(0,val32,0,0);
+                index = atoi(ag[3]);		
+				set_rgb_len_no_Breathing(val32, 0,index,0,0);
             }			
 			else if (!strncmp(ag[1], "ledb", 4))
 			{
                 val32 = atoi(ag[2]);
-				set_rgb_len_no_Breathing(0,0,val32,0);
+                index = atoi(ag[3]);		
+				set_rgb_len_no_Breathing(val32,0,0,index,0);
             }			
 			else if (!strncmp(ag[1], "ledw", 4))
 			{
                 val32 = atoi(ag[2]);
-				set_rgb_len_no_Breathing(0,0,0,val32);
+                index = atoi(ag[3]);		
+				set_rgb_len_no_Breathing(val32, 0,0,0,index);
             }	
 			else if (!strncmp(ag[1], "led_b", 5))
 			{
-				uint8_t min = atoi(ag[2]);
-				uint8_t max = atoi(ag[3]);
-				uint8_t value = (uint8_t)strtol(ag[4], NULL, 16); 
+                index = atoi(ag[2]);					
+				uint8_t min = atoi(ag[3]);
+				uint8_t max = atoi(ag[4]);
+				uint8_t value = (uint8_t)strtol(ag[5], NULL, 16); 
 
 				uint8_t r = (value & 0x08)? 255 : 0;
 				uint8_t g = (value & 0x04)? 255 : 0;
 				uint8_t b = (value & 0x02)? 255 : 0;
 				uint8_t w = (value & 0x01)? 255 : 0;
 
-				Breathing_Setup_Debug(1,2,min,max, r,g,b,w);
+				Breathing_Setup_Debug(index, 1,2,min,max, r,g,b,w);
             }
 			else if (!strncmp(ag[1], "scan", 4))
 			{
@@ -179,7 +191,9 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 				if (!strncmp(ag[2], "app", 3))
 				{
 					facto_set(atoi(ag[3])?true:false);
-				}										
+				}					
+				if (!strncmp(ag[2], "facto", 5))
+					erase_facto_configuration();						
 			}	
 			else if (!strncmp(ag[1], "acuum", 5))
 			{
@@ -203,7 +217,8 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			}		
 			else if (!strncmp(ag[1], "onoff", 5))
 			{
-				gpio_set_level(IR_ONOFF0, atoi(ag[2])?1:0);
+				gpio_set_level(AMT_ENABLE, atoi(ag[2])?1:0);
+				gpio_set_level(F_ENABLE, atoi(ag[2])?1:0);
 			}		
 			else if (!strncmp(ag[1], "mode", 4))
 			{
@@ -229,8 +244,11 @@ BaseType_t prvSetInformationCommand( char *pcWriteBuffer, size_t xWriteBufferLen
 			{
 				write_nvs_registration_flag(atoi(ag[2])?true:false);
 			}				
+			else if (!strncmp(ag[1], "ledvalue", 8))
+			{
+				LED_Bright_Set(atoi(ag[2]));
+			}	
 
-			  
 			/* There are more parameters to return after this one. */
 //			pcWriteBuffer[ 0 ] = 0x00;
 			xReturn = pdFALSE;

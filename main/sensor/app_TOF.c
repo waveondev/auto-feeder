@@ -22,28 +22,29 @@
 #include "esp_adc/adc_oneshot.h"
 #include "app_adc.h"
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 static const char *TAG = __FILE__;
 
 static int ir_count = 0;
 bool detect_object(void);
-bool VL53L0X_Detect(bool all_state)
+int VL53L0X_Detect(bool all_state)
 {
+    int value = 0;
     if(all_state)
     {
         if(GetTracker_Id_active())
         {
-            return true;
+            value |= 1 << 1;
+            return 2;
         }
     }
     app_config_t* app_config = get_app_config();
     #if 1
     if (ir_count >= 5) {
-        return true;
-        
-    } else {
-        return false;
-    }
+        value |= 1 << 0;
+    } 
     #endif
+    return value;
 }
 int left_value = 0;
 int right_value = 0;
@@ -90,6 +91,7 @@ adc_oneshot_unit_handle_t adc_handle;
 
 // 1. 발광부(TX) PWM 초기화
 bool TOF_VL53L0X_init(void) {
+    #if 1
     ledc_timer_config_t ledc_timer = {
         .speed_mode       = LEDC_MODE,
         .timer_num        = LEDC_TIMER,
@@ -109,6 +111,19 @@ bool TOF_VL53L0X_init(void) {
         .hpoint         = 0
     };
     ledc_channel_config(&ledc_channel);
+    #endif
+
+    gpio_config_t io_conf = {                   
+        .pin_bit_mask = (1ULL << IR_ENABLE),             // 설정할 GPIO 핀 15, 16, 2 지정
+        .mode = GPIO_MODE_OUTPUT,             // 출력 모드로 설정
+        .pull_up_en = GPIO_PULLUP_DISABLE,    // 내부 풀업 비활성화
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 내부 풀다운 활성화 (기본 LOW 상태 유지)
+        .intr_type = GPIO_INTR_DISABLE,       // 인터럽트 사용 안 함
+    };
+    gpio_config(&io_conf);
+    gpio_set_level(IR_ENABLE, 1);   
+
+
     return true;
 }
 
@@ -124,8 +139,7 @@ void ir_tx_enable(bool enable) {
 // 4. 핵심 로직: 물체 감지 (배경광 빼기)
 bool detect_object(void) {
     int val_right_off = 0;
-    int val_right_on = 0;
-
+    int val_right_on = 0; 
     // 단계 1: TX OFF 상태에서 주변 태양광(노이즈) 측정
     ir_tx_enable(false);
     IR_SenSing();

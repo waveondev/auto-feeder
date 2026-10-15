@@ -16,12 +16,12 @@ static QueueHandle_t isd2360_queue = NULL;
 /*---------------------------------------------------------------------------*/
 static void ISD3800_CS_Low(void)
 {
-    gpio_set_level(ISD_CS_PIN, 0);
+    //gpio_set_level(ISD_CS_PIN, 0);
 }
 
 static void ISD3800_CS_High(void)
 {
-    gpio_set_level(ISD_CS_PIN, 1);
+    //gpio_set_level(ISD_CS_PIN, 1);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -172,7 +172,7 @@ static void isd2360_read_id_accurate(void) {
 
 void isd2360_spi_init(void) {
     esp_err_t ret;
-
+#if 0
     // CS 핀을 일반 GPIO 출력 모드로 초기화 (수동 제어용)
     gpio_config_t io_conf = {
         .intr_type = GPIO_INTR_DISABLE,
@@ -217,6 +217,7 @@ void isd2360_spi_init(void) {
     ESP_ERROR_CHECK(ret);
 
     ESP_LOGI(TAG, "SPI Initialized Successfully.");
+    #endif
 }
 
 void isd2360_set(int index)

@@ -475,45 +475,39 @@ typedef struct
   uint8_t mlc[4];
 }Sensor_RawData_t;
 
-static uint32_t send_point = 0;
-static uint32_t total_point = 0;
-static uint32_t input_count = 0;
-
-static uint8_t* data_buffer;
 void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
 {
     Motion_Packet_t* Motion_Packet = (Motion_Packet_t*)data;
     
     ESP_LOGI(TAG,"[BLE_Receive_data] %d 바이트 데이터 처리 중: ", len);
-    for(int i = 0; i < len; i++)
-    {
-        ESP_LOGI(TAG,"%02X ", data[i]);
-    }
-    ESP_LOGI(TAG,"\n");
+    ESP_LOG_BUFFER_HEXDUMP(TAG, data, len, ESP_LOG_INFO);
+    client_info_t* client;
+    client = get_conn_client_by_mac(mac);
 
     switch(Motion_Packet->event_code)
     {   
         case MOTION_START_RESPONSE:
-            ESP_LOGI(TAG,"total = %d send = %d",Motion_Packet->motion_req.total_points, Motion_Packet->motion_req.send_points);                    
+            ESP_LOGI(TAG,"total = %d send = %d non_save = %d",Motion_Packet->motion_start_res.total_points, Motion_Packet->motion_start_res.send_points, Motion_Packet->motion_start_res.non_save_points);                    
 
-            if(Motion_Packet->motion_req.send_points != 0)
+            if(client != NULL && Motion_Packet->motion_start_res.send_points != 0)
             {
-                    total_point = Motion_Packet->motion_req.total_points;
-                    send_point = Motion_Packet->motion_req.send_points;
-                    input_count = 0;
-                    if(send_point == total_point)
-                        total_point = 0;                    
-                    data_buffer = (uint8_t*)calloc(send_point,sizeof(uint8_t));
-                    if(data_buffer == NULL)
+                    memcpy(&client->start_res,Motion_Packet,sizeof(Motion_Packet_t));
+                    client->total_point = Motion_Packet->motion_start_res.total_points;
+                    client->send_point = Motion_Packet->motion_start_res.send_points;
+                    client->input_count = 0;
+                    if(client->send_point == client->total_point)
+                        client->total_point = 0;
+                    client->data = (uint8_t*)calloc(client->send_point,sizeof(uint8_t));
+                    if(client->data == NULL)
                         break;
                     
                     Motion_Timer_Set(mac, true);
-                    tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,0,NULL);
+                    //tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,0,NULL);
             }
 
         break;
         case MOTION_DATA:
-            if(data_buffer == NULL)
+            if(client ==  NULL || client->data == NULL)
                 break;
             // 각 멤버의 주소를 배열로 묶어줍니다.
             uint8_t* input_ptrs[] = {
@@ -538,37 +532,42 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
             };
 
             for (int i = 0; i < 18; i++) {
-                if (input_count < send_point) { 
-                        memcpy(&data_buffer[input_count], input_ptrs[i], sizeof(uint8_t));
-                        input_count++;
+                if (client->input_count < client->send_point) { 
+                        memcpy(&client->data[client->input_count], input_ptrs[i], sizeof(uint8_t));
+                        client->input_count++;
                 } else {
                     // total_count를 초과하는 예외 데이터 처리 (경고 로그)
-                    ESP_LOGI(TAG,"Warning: Buffer full! input_count(%ld) >= total_count(%ld) ", input_count, send_point);
+                    ESP_LOGI(TAG,"Warning: Buffer full! input_count(%ld) >= total_count(%ld) ", client->input_count, client->send_point);
                     break;
                 }
             }
 
+            ESP_LOGI(TAG,"seq = %d input = %d, send = %d ", Motion_Packet->motion_data.seq,  client->input_count, client->send_point);
+            char buf[128] = {0};
+            int pos = 0;
 
-            ESP_LOGI(TAG,"seq = %d input = %d, send = %d ", Motion_Packet->motion_data.seq, input_count, send_point);
-
-            for( int i=0;i<18;i++)
+            for (int i = 0; i < 18; i++)
             {
-                ESP_LOGI(TAG,"data %d ", Motion_Packet->motion_data.MLC_data[i]); 
+                pos += snprintf(buf + pos, sizeof(buf) - pos,
+                                "%d ", Motion_Packet->motion_data.MLC_data[i]);
             }
+
+            ESP_LOGI(TAG, "data = %s", buf);
             
-            
-            
-            if(input_count >= send_point)
+            if(client->input_count >= client->send_point)
             {
                 Motion_Timer_Set(mac, false);
-                tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,send_point,data_buffer);
-                data_buffer = NULL;
-                input_count = 0;
-                send_point = 0;    
+                uint8_t* client_data = client->data;
+                uint32_t send_count = client->send_point;
+                client->data = NULL;
+                tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,send_count,client_data);
+
+                client->input_count  = 0;
+                client->send_point = 0;    
                          
                 motion_msg_send(get_conn_handle_by_mac(mac),MOTION_DATA_ACK,Motion_Packet->motion_data.seq);
-                if(total_point)
-                motion_msg_send(get_conn_handle_by_mac(mac),MOTION_START_REQUEST,1);
+                if(client->total_point)
+                    motion_msg_send(get_conn_handle_by_mac(mac),MOTION_START_REQUEST,1);
             }
             else
                 Motion_Timer_Set(mac, true);
@@ -577,7 +576,7 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                     // event_code 및 health_data_res 내부 구조체 포인터
                 // health_data_res 구조체 직접 접근
     
-
+                memcpy(&client->health_res,Motion_Packet,sizeof(Motion_Packet_t));
                 ESP_LOGI(TAG,"\n================ [ Health Data Res ] ================\n");
                 ESP_LOGI(TAG," Event Code    : 0x%02X (%u)", Motion_Packet->event_code, Motion_Packet->event_code);
                 ESP_LOGI(TAG," Struct Size   : %d bytes (Expected: 19 bytes)", sizeof(Motion_Packet->health_data_res));

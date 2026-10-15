@@ -8,7 +8,7 @@
 #include "freertos/queue.h"
 
 static const char *TAG = __FILE__;
-
+static void save_facto_configuration(void);
 app_config_t app_config = 
 {
     .op_mode = FEED_MODE_SCHEDULED_PORTION,
@@ -21,7 +21,7 @@ app_config_t app_config =
     .hx1_offset = 0,
     .case_raw_data = 0,
     .tof_sense_threshold = 50,
-    .motion_data_time = 1800,
+    .motion_data_time = 60,
     .dispense_duration = 360,// 토출시간 (분)
     .dispense_amount_g = 50,// 토출량 (g)
     .env_mode = "dev"
@@ -97,6 +97,34 @@ void reset_all_nvs_data(void)
     } else {
         ESP_LOGE("NVS", "WAVEON NVS 초기화 실패: %s", esp_err_to_name(err));
     }
+}
+void reset_all_nvs_facto(void)
+{
+
+    ESP_LOGI(TAG, "Starting NVS Reset Sequence...");
+
+    // 1. NVS 전체 삭제 (Erase)
+    esp_err_t err = nvs_flash_erase();
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "NVS Partition Erased.");
+    } else {
+        ESP_LOGE(TAG, "NVS Erase Failed: %s", esp_err_to_name(err));
+    }
+
+    // 2. NVS 재초기화 (Init)
+    err = nvs_flash_init();
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "NVS Partition Re-initialized.");
+    } else {
+        ESP_LOGE(TAG, "NVS Init Failed: %s", esp_err_to_name(err));
+    }
+
+    // 3. 재부팅 전 로그 출력 및 지연 (로그 유실 방지용 1초 대기)
+    ESP_LOGI(TAG, "Restarting ESP32 in 1 second...");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // 4. 소프트웨어 재부팅 (ESP Restart)
+    esp_restart();    
 }
 
 void dump_all_configurations(void)
@@ -184,9 +212,17 @@ void load_app_configuration(void)
         // 기본값 세팅 후 NVS에 최초로 구워두기
         write_nvs_blob(APP_NAMESPACE, APP_KEY_CONFIGURATION, &app_config, sizeof(app_config_t));
     } else {
+        if(facto_config.hx1_scale == 1000.f && app_config.hx1_scale != 1000.0f)
+        {
+            facto_config.case_raw_data = app_config.case_raw_data;
+            facto_config.hx1_scale = app_config.hx1_scale;
+            save_facto_configuration();
+        }        
         ESP_LOGI(TAG,"[CONFIG] NVS에서 시스템 설정 로드 성공! (opmode = %d 저울 Offset: %d)\r\n", 
                           app_config.op_mode, app_config.hx1_offset);
     }
+    app_config.case_raw_data = facto_config.case_raw_data;
+    app_config.hx1_scale = facto_config.hx1_scale;
 }
 
 // 값이 바뀔 때마다 호출해 줄 저장 함수
@@ -271,7 +307,7 @@ void erase_facto_configuration(void)
 {
     // 1. NVS에서 시스템 구조체 통째로 읽어오기 시도
     memset(&facto_config,0,sizeof(facto_config));
-
+    facto_config.hx1_scale = 1000.0f;
     write_nvs_blob(FACTORY_NAMESPACE, FACTORY_KEY, &facto_config, sizeof(facto_config));
 }
 void load_facto_configuration(void)
@@ -357,11 +393,9 @@ void NVS_Flash_init(void)
         
         ESP_LOGE(TAG, "Error creating Button_task on Core 1");
     }
+    load_facto_configuration();
     load_app_configuration();
     load_wifi_configuration();
-    load_facto_configuration();
-    app_config.hx1_scale = facto_config.hx1_scale;
-    app_config.case_raw_data = facto_config.case_raw_data;       
 
     dump_all_configurations();
     

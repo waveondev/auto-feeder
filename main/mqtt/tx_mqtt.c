@@ -12,12 +12,12 @@
 #include "opmode_task.h"
 #include "ble_tracker_id.h"
 #include "math.h"
+#include "ble_parse.h"
+#include "ble_task.h"
 static const char *TAG = __FILE__;
 
-Motion_Packet_t motion_res;
-Motion_Packet_t health_res;
+
 static uint16_t feeder_fault_code = 0;
-static uint16_t feeder_fault_code_send = 0;
 static uint16_t feeder_fault_code_buf = 0;
 #define FEEDER_MAJOR 1
 #define FEEDER_MINOR 1
@@ -28,10 +28,9 @@ void feeder_fault_enable(uint16_t status, bool count)
     if(feeder_fault_code != feeder_fault_code_buf)
     {
         feeder_fault_code_buf = feeder_fault_code;
-        feeder_fault_code_send = status;
         ESP_LOGI(TAG,"MESSEGE_DIAGNOSTICS = %04x", status);
         
-        mqtt_queue_send(MESSEGE_DIAGNOSTICS,NULL,0);
+        mqtt_queue_send(MESSEGE_DIAGNOSTICS,&status,sizeof(status));
     }
     if(count)
         feeder_fault_disable(status, count);            
@@ -49,15 +48,19 @@ void feeder_fault_disable(uint16_t status,bool count)
 }
 
 #define G_UUID
-static cJSON* Get_cJSON_Header(messege_tx_mqtt_cmd_e cmd)
+static cJSON* Get_cJSON_Header(messege_tx_mqtt_cmd_e cmd,  tracker_mqtt_packet_t* tracker_mqtt_packet)
 {
 
     uint32_t current_timestamp = (uint32_t)(esp_log_timestamp() / 1000); // 예시: 실제 UTC epoch sec 적용
+    client_info_t* client = NULL;
+    if(tracker_mqtt_packet != NULL)
+        client = get_conn_client_by_mac(tracker_mqtt_packet->mac);    
     cJSON *root = cJSON_CreateObject();
     if(root == NULL)
         return root;
     /* Root 레벨 필수 필드 추가 */
-    cJSON_AddStringToObject(root, "id", "123e4567-e89b-12d3-a456-426614174000"); /* 실제로는 uuid 생성 함수 사용 */
+    char buffer[40];
+    sprintf(buffer,"123e4567-e89b-12d3-4631-%012u", (unsigned int)esp_log_timestamp());
    
     if(TRACKER_MESSEGE_ACTIVITY <= cmd)
     {
@@ -109,11 +112,18 @@ static cJSON* Get_cJSON_Header(messege_tx_mqtt_cmd_e cmd)
     char str[20];
     if(TRACKER_MESSEGE_ACTIVITY <= cmd)
     {
-
-        snprintf(str, sizeof(str), "v%d.%d.%d",health_res.health_data_res.major,
-                                                health_res.health_data_res.minor,
-                                                health_res.health_data_res.patch
+        if(client != NULL)
+        {
+                snprintf(str, sizeof(str), "v%d.%d.%d",client->health_res.health_data_res.major,
+                                                client->health_res.health_data_res.minor,
+                                                client->health_res.health_data_res.patch
                             );
+        }
+        else
+        {
+                snprintf(str, sizeof(str), "v%d.%d.%d",0,0,0                            );
+        }
+
         cJSON_AddStringToObject(root, "firmware", str);
     }
     else
@@ -163,7 +173,14 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
     Tracker_Device_t* Tracker_Name = NULL;
     esp_reset_reason_t reason = esp_reset_reason();
     double weight = 0;
+    uint16_t feeder_fault_code_send = 0;
     // 현재 연결된 AP 정보 가져오기 (성공 시 ESP_OK 반환)
+
+    // 2. state 객체 생성 ({})
+    cJSON *state = NULL;
+    // 3. reported 객체 생성 ({})
+    cJSON *reported = NULL;
+
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) 
     {
         ESP_LOGI(TAG, "SSID: %s", ap_info.ssid);
@@ -328,7 +345,8 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
         break;
         case MESSEGE_DIAGNOSTICS:
             // 2. 공통 스칼라 필드 추가
-
+            if(mqtt_packet->data != NULL)
+                memcpy(&feeder_fault_code_send,mqtt_packet->data,sizeof(feeder_fault_code_send));
             cJSON_AddNumberToObject(data_obj, "uptime_sec", uptime);
             cJSON_AddNumberToObject(data_obj, "reset_reason", reason);
             cJSON_AddNumberToObject(data_obj, "rssi_dbm", rssi);
@@ -419,7 +437,8 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
             cJSON_AddItemToObject(data_obj, "context", context);
         break;
         case MESSEGE_HEALTH:
-        
+            if(mqtt_packet->data != NULL)
+                memcpy(&feeder_fault_code_send,mqtt_packet->data,sizeof(feeder_fault_code_send));
             cJSON_AddNumberToObject(data_obj, "uptime_sec", uptime);
             cJSON_AddNumberToObject(data_obj, "reset_reason", reason);
             cJSON_AddNumberToObject(data_obj, "rssi_dbm", rssi);
@@ -478,8 +497,41 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
             else
                 cJSON_AddNumberToObject(data_obj, "door_status", 1);                             
         break;
-        case AWS_MESSEGE_AWS_JOBS_GET:
-            // 빈 cJSON 객체(data_obj) 그대로 반환
+        case AWS_MESSEGE_SHADOW_UPDATE:
+            // 2. state 객체 생성 ({})
+                state = cJSON_CreateObject();
+                if (state == NULL) {
+                    cJSON_Delete(data_obj);
+                    return NULL;
+                }
+
+                // 3. reported 객체 생성 ({})
+                reported = cJSON_CreateObject();
+                if (reported == NULL) {
+                    cJSON_Delete(data_obj);
+                    cJSON_Delete(state);
+                    return NULL;
+                }
+                char str[20];
+                snprintf(str, sizeof(str), "v%d.%d.%d",FEEDER_MAJOR,
+                                                FEEDER_MINOR,
+                                                FEEDER_PATCH
+                            );
+                // 4. reported 내부에 실제 값(필드) 추가
+                cJSON_AddStringToObject(reported, "firmware", str);
+                cJSON_AddNumberToObject(reported, "sleep_mode", 0);
+                cJSON_AddBoolToObject(reported, "sleeping", false);
+
+                // 5. 계층 구조 결합: reported -> state -> root
+                cJSON_AddItemToObject(state, "reported", reported);
+                cJSON_AddItemToObject(data_obj, "state", state);
+
+                // 6. JSON 문자열 변환 (사용 후 반드시 free 필요)
+ 
+        break;
+        case AWS_MESSEGE_JOBS_GET:
+
+ 
         break;
         default:
         cJSON_Delete(data_obj);
@@ -511,6 +563,9 @@ static cJSON* Get_cJSON_Data_for_Tracker(messege_tx_mqtt_cmd_e cmd, tracker_mqtt
     const uint8_t * points;
     char dynamicMacStr[30]; // 12자리 MAC 문자열 + 널 종료 문자(\0)
     cJSON *subsystems;
+    client_info_t* client = NULL;
+    if(tracker_mqtt_packet != NULL)
+        client = get_conn_client_by_mac(tracker_mqtt_packet->mac);
     if(data_obj == NULL)
         return data_obj;
 
@@ -523,8 +578,10 @@ static cJSON* Get_cJSON_Data_for_Tracker(messege_tx_mqtt_cmd_e cmd, tracker_mqtt
             cJSON_AddStringToObject(data_obj, "tracker_id", dynamicMacStr); // 예: "TRACKER_AABBCCDDEEFF"        
             cJSON_AddStringToObject(data_obj, "activity_id", "123e4567-e89b-12d3-a456-426614174000");
             cJSON_AddNumberToObject(data_obj, "seq_num", packet->motion_data.seq);
-            cJSON_AddNumberToObject(data_obj, "total_points", motion_res.motion_req.total_points);            
-            cJSON_AddNumberToObject(data_obj, "send_points", motion_res.motion_req.send_points);
+            cJSON_AddNumberToObject(data_obj, "total_points", client->start_res.motion_start_res.total_points);            
+            cJSON_AddNumberToObject(data_obj, "send_points", client->start_res.motion_start_res.send_points);
+            cJSON_AddNumberToObject(data_obj, "non_save_points", client->start_res.motion_start_res.non_save_points);
+                        
             // 4. points 배열 추가 (uint16_t 그대로 추가, 비트 언패킹은 백엔드가 수행)
             cJSON *points_array = cJSON_CreateArray();
 
@@ -534,7 +591,7 @@ static cJSON* Get_cJSON_Data_for_Tracker(messege_tx_mqtt_cmd_e cmd, tracker_mqtt
                 cJSON_AddItemToArray(points_array, cJSON_CreateNumber(points[i]));
             }
             cJSON_AddItemToObject(data_obj, "points", points_array);
-            cJSON_AddNumberToObject(data_obj, "battery_pct", health_res.health_data_res.Bat_Level);
+            cJSON_AddNumberToObject(data_obj, "battery_pct", client->health_res.health_data_res.Bat_Level);
 
         break;
         case TRACKER_MESSEGE_DIAGNOSTICS:
@@ -642,7 +699,7 @@ void Send_cJSON_Messege(mqtt_packet_t* mqtt_packet)
             mac_byte[0], mac_byte[1], mac_byte[2], mac_byte[3], mac_byte[4], mac_byte[5]);
 
 // 1. AWS 예약 기능용 메시지 처리 (Header 감싸지 않음)
-    if (mqtt_packet->cmd == AWS_MESSEGE_AWS_JOBS_GET) 
+    if (mqtt_packet->cmd >= AWS_MESSEGE_SHADOW_UPDATE) 
     {
         // Get_cJSON_Data()가 반환하는 JSON 객체를 그대로 root로 사용!
         root = Get_cJSON_Data(mqtt_packet);
@@ -654,7 +711,7 @@ void Send_cJSON_Messege(mqtt_packet_t* mqtt_packet)
     } 
     else 
     {
-        root = Get_cJSON_Header(mqtt_packet->cmd);
+        root = Get_cJSON_Header(mqtt_packet->cmd,NULL);
         if (root == NULL) 
         {
              ESP_LOGI(TAG,"Header = %d" , mqtt_packet->cmd);
@@ -702,9 +759,13 @@ void Send_cJSON_Messege(mqtt_packet_t* mqtt_packet)
             case MESSEGE_HEALTH:
                 snprintf(pub_topic,sizeof(pub_topic),SERVER_TX_TOPIC_HEALTH,dynamicMacStr);
             break;
-            case AWS_MESSEGE_AWS_JOBS_GET:
+            case AWS_MESSEGE_SHADOW_UPDATE:
                 snprintf(pub_topic,sizeof(pub_topic),AWS_RX_TOPIC_JOBS_NOTIFY,dynamicMacStr);
             break;
+            case AWS_MESSEGE_JOBS_GET:
+                snprintf(pub_topic,sizeof(pub_topic),AWS_TX_TOPIC_JOBS_GET,dynamicMacStr);
+            break;
+            
             default:
                 pubTopic = NULL;
                 ESP_LOGW(TAG, "Unknown command input: %d", mqtt_packet->cmd);
@@ -736,17 +797,9 @@ void Send_cJSON_Messege(mqtt_packet_t* mqtt_packet)
 
 void Send_cJSON_Messege_for_tracker(tracker_mqtt_packet_t* tracker_mqtt_packet)
 {
-    Motion_Packet_t* packet = &tracker_mqtt_packet->packet;
     messege_tx_mqtt_cmd_e cmd = tracker_mqtt_packet->cmd;
-    if(cmd == TRACKER_MESSEGE_HEALTH)
-        memcpy(&health_res,&tracker_mqtt_packet->packet,sizeof(Motion_Packet_t));
-    if(packet->event_code == MOTION_START_RESPONSE)
-    {
-        memcpy(&motion_res,&tracker_mqtt_packet->packet,sizeof(Motion_Packet_t));
-        ESP_LOGI(TAG,"total = %d send = %d ",motion_res.motion_req.total_points,motion_res.motion_req.send_points);
-        return;
-    }
-    cJSON* root = Get_cJSON_Header(cmd);
+
+    cJSON* root = Get_cJSON_Header(cmd,tracker_mqtt_packet);
     if(root == NULL)
         return;
 

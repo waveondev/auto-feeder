@@ -92,6 +92,8 @@ void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Pac
     mqtt_packet.data = data;
     ESP_LOGW("mqtt_tx", "tracker_mqtt_queue send.");
     if (xQueueSend(tracker_mqtt_queue, &mqtt_packet, 0) != pdPASS) {
+        if(data != NULL)
+            free(data);
         ESP_LOGW("mqtt_tx", "Queue full! Dropping packet and freeing memory.");
     }
 }
@@ -157,7 +159,7 @@ static void ble_discon_timer_set(bool state, uint64_t discon_timeout)
     else
         ESP_LOGI(TAG, "ble_discon_timer reset"); 
 }
-
+bool time_sync_get(void);
 static void aws_iot_main_entry(void *pvParameters)
 {
     ESP_LOGI(TAG, "AWS IoT 전담 태스크 시작");
@@ -169,6 +171,10 @@ static void aws_iot_main_entry(void *pvParameters)
         pdTRUE,
         portMAX_DELAY
     );
+    while(time_sync_get() == false)
+    {
+        vTaskDelay(1000);
+    }
     static uint32_t discon_timeout = 0;
     // -------------------------------------------------------------
     // 1. [1회성 초기화] 큐 및 타이머 생성을 루프 밖에서 단 1번만 수행
@@ -225,8 +231,8 @@ static void aws_iot_main_entry(void *pvParameters)
             vTaskDelay(pdMS_TO_TICKS(3000)); /* 3초 대기 */
             provisioning_count++;
             ESP_LOGI(TAG, "provisioning retry count = %d", provisioning_count);
-            if(provisioning_count > 10)
-                esp_restart();
+            //if(provisioning_count > 10)
+               // esp_restart();
         }
 
         

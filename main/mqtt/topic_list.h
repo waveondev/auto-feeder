@@ -34,11 +34,15 @@
 
 
 
-#define AWS_RX_TOPIC_JOBS_NOTIFY          "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/jobs/notify-next"
+
 #define AWS_RX_TOPIC_JOBS_NEXT_GET_ACCEPTED "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/jobs/$next/get/accepted"
 #define AWS_RX_TOPIC_SHADOW_GET_ACCEPTED    "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/shadow/get/accepted"
-#define AWS_RX_TOPIC_JOBS_UPDATE_ACCEPTED "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/jobs/update/accepted"
-#define AWS_RX_TOPIC_SHADOW_DELTA         "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/shadow/update/delta"
+#define AWS_RX_TOPIC_JOBS_NOTIFY            "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/jobs/notify-next"
+#define AWS_RX_TOPIC_SHADOW_DELTA           "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/shadow/update/delta"
+#define AWS_RX_TOPIC_SHADOW_UPDATE_ACCEPTED "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/shadow/update/accepted"
+#define AWS_RX_TOPIC_SHADOW_UPDATE_REJECTED "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/shadow/update/rejected"
+
+
 
 
 
@@ -50,6 +54,5 @@
 
 // 3. Shadow 상태 보고 (MAC 주소 1개 매칭)
 #define AWS_TX_TOPIC_SHADOW_UPDATE      "$aws/things/" CONFIG_DEVICE_PREFIX "_%s/shadow/update"
-
 
 #endif

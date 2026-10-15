@@ -24,21 +24,21 @@ void led_bit_disable(uint16_t disable);
 void led_bit_enable(uint16_t enable);
 void init_led_strip(void);
 void set_led_clear(void) ;
-void set_rgb_len_no_Breathing(uint8_t R, uint8_t G, uint8_t B, uint8_t W);
-void Breathing_Setup(uint8_t enable, uint8_t step, 
+void set_rgb_len_no_Breathing(uint8_t index ,uint8_t R, uint8_t G, uint8_t B, uint8_t W);
+void Breathing_Setup(uint8_t index, uint8_t enable, uint8_t step, 
                             uint8_t min_bright,  // 💡 최소 밝기 (0~255)
                             uint8_t max_bright,  // 💡 최대 밝기 (0~255)
                             uint8_t target_r,
                             uint8_t target_g,
                             uint8_t target_b,
                             uint8_t target_w);
-void Breathing_Setup_Debug(uint8_t enable, uint8_t step, 
+void Breathing_Setup_Debug(uint8_t index, uint8_t enable, uint8_t step, 
                             uint8_t min_bright,  // 💡 최소 밝기 (0~255)
                             uint8_t max_bright,  // 💡 최대 밝기 (0~255)
                             uint8_t target_r,
                             uint8_t target_g,
                             uint8_t target_b,
-                            uint8_t target_w);                         
+                            uint8_t target_w);                     
 void LED_task_init(void);
 bool TOF_enable(void);
 bool ota_enable(void);
@@ -52,5 +52,5 @@ bool motor_error_enable(void);
 bool motor_mode_enable(void);
 bool food_discharge_enable(void);
 void led_status_print(void);
-void set_rgb_led_for_number(uint32_t index, uint8_t R, uint8_t G, uint8_t B, uint8_t W);
+void index_set_rgb_led(uint8_t index, uint8_t R, uint8_t G, uint8_t B, uint8_t W);
 #endif

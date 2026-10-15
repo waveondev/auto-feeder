@@ -15,5 +15,6 @@ typedef enum
 
 void Setting_callback(Motion_Packet_t* Motion_Packet);
 void Setting_Enable(Setting_cmd_e cmd);
+
 #endif
 

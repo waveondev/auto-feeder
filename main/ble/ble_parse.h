@@ -50,12 +50,14 @@ typedef struct {
   uint8_t event_code;
   union
   {
-       struct
+      struct
       {
         uint32_t total_points;
         uint8_t send_points;
-        uint16_t padding[7];
-      } motion_req;
+        uint8_t non_save_points;
+        uint8_t reserved;
+        uint16_t padding[6];
+      } motion_start_res;
       struct
       {
         uint8_t seq;
@@ -91,7 +93,7 @@ typedef struct {
       {
         uint8_t req_type;
         uint16_t padding[9];
-      } motion_res;
+      } motion_start_req;
       struct
       {
         uint8_t ack_seq_no;
