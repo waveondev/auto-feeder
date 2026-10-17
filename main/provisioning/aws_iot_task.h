@@ -8,5 +8,9 @@
 bool aws_connected_state(void);
 void aws_iot_task_init(void);
 bool mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, void* data, uint32_t data_len);
-void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  uint8_t* data );
+void tracker_mqtt_queue_send(messege_tx_mqtt_cmd_e cmd, uint8_t* mac, Motion_Packet_t* packet,uint32_t data_len,  uint8_t* data,
+    uint32_t total_points,
+    uint32_t send_points,
+    uint32_t non_save_points
+);
 #endif /* __AWS_IOT_TASK_H__ */

@@ -444,7 +444,7 @@ void Smart_Feeder(void)
 
     bool sensor_detected = VL53L0X_Detect(false);
     uint32_t current_tick = xTaskGetTickCount();
-
+    ACCESS_Packet_t ACCESS_Packet = {0};
     switch (smart_state)
     {
         case SMART_IDLE:
@@ -467,7 +467,10 @@ void Smart_Feeder(void)
             if ((int32_t)(smart_timer_target - current_tick) <= 0) 
             {
                 // 5초 동안 급격하게 튀지 않고 무사히 통과 완료!
-                mqtt_queue_send(MESSEGE_ACCESS,&start_weight,sizeof(start_weight));
+                ACCESS_Packet.detect_flag = sensor_detected;
+                ACCESS_Packet.start_weight = start_weight;
+                // 5초 동안 급격하게 튀지 않고 무사히 통과 완료!
+                mqtt_queue_send(MESSEGE_ACCESS,&ACCESS_Packet,sizeof(ACCESS_Packet));
                 smart_state = SMART_RUN_STABLE;
                 ESP_LOGI(TAG, "SMART: 5-second verification SUCCESS. Stable running...");
             }

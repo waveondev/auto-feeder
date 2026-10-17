@@ -38,7 +38,8 @@ typedef struct {
     /* [Group 3] 소형 타입 조합으로 4바이트 묶기 (총 12 바이트) */
     uint8_t mac_addr[6];            // 6B (Offset 68)
     uint16_t conn_handle;           // 2B (Offset 74) -> 6 + 2 = 8B
-    bool is_connected;              // 1B (Offset 76)
+    uint32_t start_res_seq;              // 4B (Offset 80)    
+    bool is_connected;              // 1B (Offset 81)
     uint8_t* data;
 } client_info_t;
 /* Attributes State Machine */

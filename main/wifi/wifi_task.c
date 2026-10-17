@@ -426,7 +426,7 @@ void wifi_init(void)
     // 4. Wi-Fi 모드를 STA(단말기)로 설정하고 드라이버 켜기
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
-
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
     ESP_LOGI("WIFI", "Wi-Fi 초기화 완료! (대기 또는 자동 연결 진행 중)");
 
     app_wifi_config_t* wifi_config = get_wifi_config();

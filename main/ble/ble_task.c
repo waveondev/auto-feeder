@@ -131,7 +131,13 @@ static void ble_spp_server_advertise(void)
    // fields.num_uuids128 = 1;
    // fields.uuids128_is_complete = 1;
 
-
+    char device_name[30] = {0};
+    if (read_nvs_registration_flag() == false) {
+        snprintf(device_name, sizeof(device_name), "%s-R-feeder", CONFIG_DEVICE_PREFIX);
+    } else {
+        snprintf(device_name, sizeof(device_name), "%s-feeder", CONFIG_DEVICE_PREFIX);
+    }
+    ble_svc_gap_device_name_set(device_name);
 
     const char *name = ble_svc_gap_device_name();
 
@@ -983,11 +989,16 @@ void ble_task_init(void)
     ble_hs_cfg.sm_io_cap = CONFIG_EXAMPLE_IO_TYPE;
 
     assert(gatt_svr_init() == 0);
-    char name[30] = {0};
+  
+    char device_name[30] = {0};
+    if (read_nvs_registration_flag() == false) {
+        snprintf(device_name, sizeof(device_name), "%s-R-feeder", CONFIG_DEVICE_PREFIX);
+    } else {
+        snprintf(device_name, sizeof(device_name), "%s-feeder", CONFIG_DEVICE_PREFIX);
+    }
 
-    sprintf(name,"%s-feeder",CONFIG_DEVICE_PREFIX);
+    assert(ble_svc_gap_device_name_set(device_name) == 0);
 
-    assert(ble_svc_gap_device_name_set(name) == 0);
     ble_store_config_init();
 
     const esp_timer_create_args_t mac_sending_timer_args = {

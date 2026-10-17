@@ -161,6 +161,7 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
     };
     INTAKE_Packet_t *INTAKE_Packet;
     DISPENSE_Packet_t *DISPENSE_Packet;
+    ACCESS_Packet_t *ACCESS_Packet = NULL;
     cJSON *data_obj = cJSON_CreateObject();
     uint8_t mac_byte[6];
     char sub_string[20];
@@ -173,6 +174,7 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
     Tracker_Device_t* Tracker_Name = NULL;
     esp_reset_reason_t reason = esp_reset_reason();
     double weight = 0;
+    int detect_type = 0;    
     uint16_t feeder_fault_code_send = 0;
     // 현재 연결된 AP 정보 가져오기 (성공 시 ESP_OK 반환)
 
@@ -241,10 +243,12 @@ static cJSON* Get_cJSON_Data(mqtt_packet_t* mqtt_packet)
 // 🔧 수정: 문자열이 아닌 Float(숫자) 타입으로 전달해야 함
             if(mqtt_packet->data != NULL)
             {
-                data_weight = *(float *)mqtt_packet->data;
-                weight = round((double)data_weight * 100.0) / 100.0;
+                ACCESS_Packet = (ACCESS_Packet_t*)mqtt_packet->data;
+                weight = round((double)ACCESS_Packet->start_weight * 100.0) / 100.0;
+                detect_type = ACCESS_Packet->detect_flag;
             }   
             cJSON_AddNumberToObject(data_obj, "start_weight", data_weight);
+            cJSON_AddNumberToObject(data_obj, "detect_type", detect_type);
         break;
         case MESSEGE_INTAKE:
             cJSON_AddStringToObject(data_obj, "intake_id", "550e8400-e29b-41d4-a716-446655440000");

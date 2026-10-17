@@ -500,7 +500,7 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                     client->data = (uint8_t*)calloc(client->send_point,sizeof(uint8_t));
                     if(client->data == NULL)
                         break;
-                    
+                    client->start_res_seq = (unsigned int)esp_log_timestamp();
                     Motion_Timer_Set(mac, true);
                     //tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,0,NULL);
             }
@@ -531,7 +531,7 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                 &Motion_Packet->motion_data.MLC_data[17],                                
             };
 
-            for (int i = 0; i < 18; i++) {
+             for (int i = 0; i < 18; i++) {
                 if (client->input_count < client->send_point) { 
                         memcpy(&client->data[client->input_count], input_ptrs[i], sizeof(uint8_t));
                         client->input_count++;
@@ -559,9 +559,12 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                 Motion_Timer_Set(mac, false);
                 uint8_t* client_data = client->data;
                 uint32_t send_count = client->send_point;
+        
+                tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,send_count,client_data,client->total_point,client->send_point, client->start_res.motion_start_res.non_save_points);
+                
+                free(client->data);
                 client->data = NULL;
-                tracker_mqtt_queue_send(TRACKER_MESSEGE_ACTIVITY,mac, Motion_Packet,send_count,client_data);
-
+                client->total_point = 0;
                 client->input_count  = 0;
                 client->send_point = 0;    
                          
@@ -606,8 +609,8 @@ void BLE_Receive_data(uint8_t* mac, uint8_t* data, uint16_t len)
                 if(Motion_Packet->health_data_res.fault_flag.bit.Bat_Status == 2 || Motion_Packet->health_data_res.fault_flag.bit.storage ||
                 Motion_Packet->health_data_res.fault_flag.bit.BLE_Err || Motion_Packet->health_data_res.fault_flag.bit.IMU_Err ||
                 Motion_Packet->health_data_res.fault_flag.bit.reserved)
-                    tracker_mqtt_queue_send(TRACKER_MESSEGE_DIAGNOSTICS,mac, Motion_Packet,0,NULL);                
-                tracker_mqtt_queue_send(TRACKER_MESSEGE_HEALTH,mac, Motion_Packet,0,NULL);
+                    tracker_mqtt_queue_send(TRACKER_MESSEGE_DIAGNOSTICS,mac, Motion_Packet,0,NULL,0,0,0);                
+                tracker_mqtt_queue_send(TRACKER_MESSEGE_HEALTH,mac, Motion_Packet,0,NULL,0,0,0);
         break;
         case TIME_REQUEST:
             motion_msg_send(get_conn_handle_by_mac(mac),TIME_RESPONSE,0); 

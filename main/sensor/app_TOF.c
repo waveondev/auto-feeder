@@ -23,34 +23,23 @@
 #include "app_adc.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
+#include "opmode_task.h"
+#include "app_HX711.h"
 static const char *TAG = __FILE__;
 
 static int ir_count = 0;
+static int animal_detect = 0;
 bool detect_object(void);
 int VL53L0X_Detect(bool all_state)
 {
-    int value = 0;
-    if(all_state)
-    {
-        if(GetTracker_Id_active())
-        {
-            value |= 1 << 1;
-            return 2;
-        }
-    }
-    app_config_t* app_config = get_app_config();
-    #if 1
-    if (ir_count >= 5) {
-        value |= 1 << 0;
-    } 
-    #endif
-    return value;
+    return animal_detect;
 }
 int left_value = 0;
 int right_value = 0;
 void detect_task(void)
 {
     app_config_t* app_config = get_app_config();
+    ACCESS_Packet_t ACCESS_Packet = {0};
     if (right_value > app_config->tof_sense_threshold) {
         if(ir_count < 10)
             ir_count++;
@@ -58,6 +47,30 @@ void detect_task(void)
     } else {
         if(ir_count)
             ir_count=0;
+    }
+    if(GetTracker_Id_active())
+    {
+        if((animal_detect & ( 1<<1 )) == 0)
+        {
+            animal_detect |= 1 << 1;
+            ACCESS_Packet.detect_flag = animal_detect;
+            ACCESS_Packet.start_weight = loadcell_data_get();
+            // 5초 동안 급격하게 튀지 않고 무사히 통과 완료!
+            mqtt_queue_send(MESSEGE_ACCESS,&ACCESS_Packet,sizeof(ACCESS_Packet));
+        }
+    }
+    else
+    {
+        animal_detect &= ~(1<<1);
+    }
+
+    if (ir_count >= 5) 
+    {
+        animal_detect |= 1 << 0;
+    }
+    else
+    {
+        animal_detect &= ~(1<<0);
     }
 }
 
